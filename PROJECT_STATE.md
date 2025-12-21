@@ -2,15 +2,15 @@
 
 ## Last Updated
 Date: 2024-12-20
-Session: 4
-Status: Basic crawler complete
+Session: 5
+Status: Celery task queue complete
 
 ## Completed Features
 - [x] Django project setup
 - [x] Source model and admin
 - [x] Article model and storage
 - [x] Basic HTTP crawler (requests + BeautifulSoup)
-- [ ] Celery task queue
+- [x] Celery task queue with CrawlJob tracking
 - [ ] Article model and storage
 - [ ] Text extraction (newspaper3k)
 - [ ] Translation (Google Translate)
@@ -68,6 +68,7 @@ None yet - fresh start
 Not yet implemented
 
 ## Recent Sessions Log
+**Session 5** (2024-12-20): Celery task queue - CrawlJob model, async crawl_source task, crawl_all_active_sources scheduler task
 **Session 4** (2024-12-20): Basic crawler - BaseCrawler, ScrapyCrawler with article link detection, tested successfully
 **Session 3** (2024-12-20): Admin interfaces - SourceAdmin and ArticleAdmin with custom displays, filters, actions, superuser created
 **Session 2** (2024-12-20): Core models - BaseModel, Source (31 fields), Article (47 fields), migrations, tests passed
