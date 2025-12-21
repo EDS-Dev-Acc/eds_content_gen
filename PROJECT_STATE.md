@@ -2,12 +2,13 @@
 
 ## Last Updated
 Date: 2024-12-20
-Session: 1
-Status: Django project setup complete
+Session: 2
+Status: Core models created and tested
 
 ## Completed Features
 - [x] Django project setup
-- [ ] Source model and admin
+- [x] Source model and admin (model complete, admin pending)
+- [x] Article model and storage (model complete)
 - [ ] Basic Scrapy crawler
 - [ ] Celery task queue
 - [ ] Article model and storage
@@ -19,23 +20,23 @@ Status: Django project setup complete
 - [ ] Content synthesis
 
 ## Current Focus
-**Working on**: Ready for testing Django setup
-**Files created**:
-- Django project structure (config/)
-- All app directories (apps/core, sources, articles, content, workflows, analytics)
-- Settings files (base.py, development.py, production.py)
-- requirements.txt with all dependencies
-- manage.py
+**Working on**: Core models complete and tested
+**Files created in Session 2**:
+- apps/core/models.py - BaseModel abstract class
+- apps/sources/models.py - Source model (full schema)
+- apps/articles/models.py - Article model (full schema)
+- Migrations: 0001_initial for sources and articles
+- scripts/test_models.py - Model testing script
 
-**Last successful test**: Project structure created, ready to test
+**Last successful test**: Created Source and Article in database, all queries working
 
 ## Next Steps
-1. Create virtual environment (python -m venv venv)
-2. Activate virtual environment
-3. Install requirements (pip install -r requirements.txt)
-4. Create .env file from .env.example
-5. Test: python manage.py runserver
-6. If successful, proceed to Session 2: Core Models
+1. Session 3: Admin Interface
+   - Create SourceAdmin with fieldsets
+   - Create ArticleAdmin with filters
+   - Test admin interface
+2. Session 4: Simple Crawler
+3. Session 5: Celery Setup
 
 ## Key Decisions Made
 - **Database**: PostgreSQL (for relational integrity and JSON support)
@@ -67,5 +68,6 @@ None yet - fresh start
 Not yet implemented
 
 ## Recent Sessions Log
+**Session 2** (2024-12-20): Core models - BaseModel, Source (31 fields), Article (47 fields), migrations, tests passed
 **Session 1** (2024-12-20): Django project setup - all apps, settings, and configuration complete
 **Session 0** (2024-12-20): Phase 0 preparation - creating tracking files and project structure
