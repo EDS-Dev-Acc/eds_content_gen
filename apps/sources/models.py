@@ -245,3 +245,107 @@ class Source(BaseModel):
     def is_healthy(self):
         """Check if the source is in good health (low error rate)."""
         return self.crawl_errors_count < 3
+
+
+class CrawlJob(BaseModel):
+    """
+    Tracks individual crawl job executions.
+    """
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('running', 'Running'),
+        ('completed', 'Completed'),
+        ('failed', 'Failed'),
+    ]
+
+    source = models.ForeignKey(
+        Source,
+        on_delete=models.CASCADE,
+        related_name='crawl_jobs',
+        verbose_name='Source',
+        help_text='The source being crawled'
+    )
+
+    status = models.CharField(
+        max_length=20,
+        choices=STATUS_CHOICES,
+        default='pending',
+        db_index=True,
+        verbose_name='Status',
+        help_text='Current status of the crawl job'
+    )
+
+    started_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Started At',
+        help_text='When the crawl job started'
+    )
+
+    completed_at = models.DateTimeField(
+        null=True,
+        blank=True,
+        verbose_name='Completed At',
+        help_text='When the crawl job completed'
+    )
+
+    # Results
+    total_found = models.IntegerField(
+        default=0,
+        verbose_name='Total Found',
+        help_text='Total number of potential articles found'
+    )
+
+    new_articles = models.IntegerField(
+        default=0,
+        verbose_name='New Articles',
+        help_text='Number of new articles collected'
+    )
+
+    duplicates = models.IntegerField(
+        default=0,
+        verbose_name='Duplicates',
+        help_text='Number of duplicate articles skipped'
+    )
+
+    errors = models.IntegerField(
+        default=0,
+        verbose_name='Errors',
+        help_text='Number of errors encountered'
+    )
+
+    error_message = models.TextField(
+        blank=True,
+        verbose_name='Error Message',
+        help_text='Error message if crawl failed'
+    )
+
+    # Celery task info
+    task_id = models.CharField(
+        max_length=255,
+        blank=True,
+        verbose_name='Task ID',
+        help_text='Celery task ID'
+    )
+
+    class Meta:
+        db_table = 'crawl_jobs'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['source', '-created_at']),
+            models.Index(fields=['status']),
+            models.Index(fields=['task_id']),
+        ]
+        verbose_name = 'Crawl Job'
+        verbose_name_plural = 'Crawl Jobs'
+
+    def __str__(self):
+        return f"Crawl {self.source.name} - {self.status} ({self.created_at})"
+
+    @property
+    def duration(self):
+        """Calculate duration of the crawl job."""
+        if self.started_at and self.completed_at:
+            return self.completed_at - self.started_at
+        return None
