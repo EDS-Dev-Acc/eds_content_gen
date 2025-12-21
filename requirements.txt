@@ -1,0 +1,44 @@
+# Core Django
+Django==5.0.1
+djangorestframework==3.14.0
+python-dotenv==1.0.0
+
+# Database
+psycopg2-binary==2.9.9
+
+# Task Queue
+celery==5.3.4
+redis==5.0.1
+
+# API & LLM
+anthropic==0.18.1
+openai==1.12.0
+
+# Translation
+google-cloud-translate==3.15.0
+langdetect==1.0.9
+
+# Web Crawling
+scrapy==2.11.0
+playwright==1.41.0
+selenium==4.16.0
+newspaper3k==0.2.8
+beautifulsoup4==4.12.3
+lxml==5.1.0
+
+# Utilities
+requests==2.31.0
+python-dateutil==2.8.2
+pytz==2024.1
+
+# Development
+black==24.1.1
+isort==5.13.2
+flake8==7.0.0
+pytest==7.4.4
+pytest-django==4.7.0
+coverage==7.4.1
+
+# Production
+gunicorn==21.2.0
+whitenoise==6.6.0
