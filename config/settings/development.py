@@ -10,9 +10,9 @@ DEBUG = True
 ALLOWED_HOSTS = ['localhost', '127.0.0.1', '[::1]']
 
 # Development-specific apps
-INSTALLED_APPS += [
-    'django_extensions',  # Optional: adds useful management commands
-]
+# INSTALLED_APPS += [
+#     'django_extensions',  # Optional: adds useful management commands (install separately if needed)
+# ]
 
 # Development email backend (console)
 EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
