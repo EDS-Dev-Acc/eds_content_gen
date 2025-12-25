@@ -1,0 +1,253 @@
+<!-- Seed Review Queue Partial -->
+<!-- Phase 16: Review workflow for discovered seed candidates -->
+
+<div id="seed-review-queue" class="space-y-4">
+    <!-- Header with stats -->
+    <div class="flex items-center justify-between">
+        <div>
+            <h3 class="text-lg font-medium text-gray-900">Seed Review Queue</h3>
+            <p class="text-sm text-gray-500">
+                {{ pending_count }} pending · {{ approved_count }} approved · {{ rejected_count }} rejected
+            </p>
+        </div>
+        <div class="flex space-x-2">
+            <!-- Bulk actions -->
+            <button type="button"
+                    id="bulk-approve-btn"
+                    class="hidden inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-green-600 hover:bg-green-700"
+                    hx-post="{% url 'console:seeds_bulk_review' %}?action=approve"
+                    hx-include="[name='selected_seeds']"
+                    hx-target="#seed-review-queue"
+                    hx-swap="outerHTML">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                </svg>
+                Approve Selected
+            </button>
+            <button type="button"
+                    id="bulk-reject-btn"
+                    class="hidden inline-flex items-center px-3 py-1.5 border border-transparent text-xs font-medium rounded-md text-white bg-red-600 hover:bg-red-700"
+                    hx-post="{% url 'console:seeds_bulk_review' %}?action=reject"
+                    hx-include="[name='selected_seeds']"
+                    hx-target="#seed-review-queue"
+                    hx-swap="outerHTML">
+                <svg class="w-4 h-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                </svg>
+                Reject Selected
+            </button>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="flex items-center space-x-4 bg-gray-50 p-3 rounded-lg">
+        <select name="review_status" 
+                class="text-sm border-gray-300 rounded-md"
+                hx-get="{% url 'console:seeds_review_queue' %}"
+                hx-target="#seed-review-queue"
+                hx-swap="outerHTML"
+                hx-include="[name='sort']">
+            <option value="pending" {% if current_status == 'pending' %}selected{% endif %}>Pending Review</option>
+            <option value="reviewed" {% if current_status == 'reviewed' %}selected{% endif %}>Reviewed</option>
+            <option value="approved" {% if current_status == 'approved' %}selected{% endif %}>Approved</option>
+            <option value="rejected" {% if current_status == 'rejected' %}selected{% endif %}>Rejected</option>
+            <option value="all" {% if current_status == 'all' %}selected{% endif %}>All</option>
+        </select>
+        
+        <select name="sort" 
+                class="text-sm border-gray-300 rounded-md"
+                hx-get="{% url 'console:seeds_review_queue' %}"
+                hx-target="#seed-review-queue"
+                hx-swap="outerHTML"
+                hx-include="[name='review_status']">
+            <option value="-overall_score" {% if current_sort == '-overall_score' %}selected{% endif %}>Highest Score First</option>
+            <option value="overall_score" {% if current_sort == 'overall_score' %}selected{% endif %}>Lowest Score First</option>
+            <option value="-created_at" {% if current_sort == '-created_at' %}selected{% endif %}>Newest First</option>
+            <option value="created_at" {% if current_sort == 'created_at' %}selected{% endif %}>Oldest First</option>
+        </select>
+        
+        <input type="text" 
+               name="q" 
+               value="{{ search_query }}"
+               placeholder="Search domain..."
+               class="text-sm border-gray-300 rounded-md"
+               hx-get="{% url 'console:seeds_review_queue' %}"
+               hx-target="#seed-review-queue"
+               hx-swap="outerHTML"
+               hx-trigger="keyup changed delay:500ms"
+               hx-include="[name='review_status'], [name='sort']">
+    </div>
+
+    <!-- Seed list -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-md">
+        <ul role="list" class="divide-y divide-gray-200">
+            {% for seed in seeds %}
+            <li class="hover:bg-gray-50">
+                <div class="px-4 py-4 flex items-center">
+                    <!-- Checkbox -->
+                    <input type="checkbox" 
+                           name="selected_seeds" 
+                           value="{{ seed.id }}"
+                           class="h-4 w-4 text-indigo-600 border-gray-300 rounded mr-4 seed-checkbox"
+                           onchange="updateBulkButtons()">
+                    
+                    <!-- Score indicator -->
+                    <div class="flex-shrink-0 mr-4">
+                        <div class="w-12 h-12 rounded-full flex items-center justify-center text-sm font-medium
+                            {% if seed.overall_score >= 70 %}bg-green-100 text-green-800
+                            {% elif seed.overall_score >= 40 %}bg-yellow-100 text-yellow-800
+                            {% else %}bg-red-100 text-red-800{% endif %}">
+                            {{ seed.overall_score }}
+                        </div>
+                    </div>
+                    
+                    <!-- Seed info -->
+                    <div class="min-w-0 flex-1">
+                        <div class="flex items-center">
+                            <p class="text-sm font-medium text-indigo-600 truncate max-w-md">
+                                {{ seed.domain }}
+                            </p>
+                            {% if seed.seed_type != 'unknown' %}
+                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                                {{ seed.get_seed_type_display }}
+                            </span>
+                            {% endif %}
+                            {% if seed.country %}
+                            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-100 text-blue-800">
+                                {{ seed.country }}
+                            </span>
+                            {% endif %}
+                        </div>
+                        <p class="text-xs text-gray-500 truncate mt-1">
+                            {{ seed.url }}
+                        </p>
+                        <div class="flex items-center mt-1 text-xs text-gray-400 space-x-4">
+                            <span title="Relevance">📊 {{ seed.relevance_score }}</span>
+                            <span title="Utility">🔧 {{ seed.utility_score }}</span>
+                            <span title="Freshness">⏰ {{ seed.freshness_score }}</span>
+                            <span title="Authority">🏛️ {{ seed.authority_score }}</span>
+                            {% if seed.scrape_plan_hint %}
+                            <span class="text-indigo-500">→ {{ seed.get_scrape_plan_hint_display }}</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    
+                    <!-- Review status -->
+                    <div class="ml-4 flex-shrink-0">
+                        {% if seed.review_status == 'pending' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-800">
+                            Pending
+                        </span>
+                        {% elif seed.review_status == 'approved' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                            Approved
+                        </span>
+                        {% elif seed.review_status == 'rejected' %}
+                        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                            Rejected
+                        </span>
+                        {% endif %}
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="ml-4 flex-shrink-0 flex space-x-2">
+                        <!-- Preview capture -->
+                        {% if seed.captures.exists %}
+                        <button type="button"
+                                class="text-gray-400 hover:text-indigo-500"
+                                hx-get="{% url 'console:seed_capture_preview' seed.id %}"
+                                hx-target="#modal-container"
+                                hx-swap="innerHTML"
+                                title="Preview capture">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"></path>
+                            </svg>
+                        </button>
+                        {% endif %}
+                        
+                        <!-- Quick approve -->
+                        {% if seed.review_status == 'pending' %}
+                        <button type="button"
+                                class="text-gray-400 hover:text-green-500"
+                                hx-post="{% url 'console:seed_review_action' seed.id %}?action=approve"
+                                hx-target="#seed-review-queue"
+                                hx-swap="outerHTML"
+                                title="Approve">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"></path>
+                            </svg>
+                        </button>
+                        
+                        <!-- Quick reject -->
+                        <button type="button"
+                                class="text-gray-400 hover:text-red-500"
+                                hx-post="{% url 'console:seed_review_action' seed.id %}?action=reject"
+                                hx-target="#seed-review-queue"
+                                hx-swap="outerHTML"
+                                title="Reject">
+                            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path>
+                            </svg>
+                        </button>
+                        {% endif %}
+                    </div>
+                </div>
+            </li>
+            {% empty %}
+            <li class="px-4 py-8 text-center text-gray-500">
+                No seeds in queue matching current filters.
+            </li>
+            {% endfor %}
+        </ul>
+    </div>
+    
+    <!-- Pagination -->
+    {% if page_obj.has_other_pages %}
+    <nav class="flex items-center justify-between border-t border-gray-200 px-4 sm:px-0 mt-4">
+        <div class="flex w-0 flex-1">
+            {% if page_obj.has_previous %}
+            <button hx-get="{% url 'console:seeds_review_queue' %}?page={{ page_obj.previous_page_number }}"
+                    hx-target="#seed-review-queue"
+                    hx-swap="outerHTML"
+                    hx-include="[name='review_status'], [name='sort'], [name='q']"
+                    class="inline-flex items-center border-t-2 border-transparent pt-4 pr-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                ← Previous
+            </button>
+            {% endif %}
+        </div>
+        <div class="hidden md:flex">
+            <span class="border-t-2 border-indigo-500 px-4 pt-4 text-sm font-medium text-indigo-600">
+                Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+            </span>
+        </div>
+        <div class="flex w-0 flex-1 justify-end">
+            {% if page_obj.has_next %}
+            <button hx-get="{% url 'console:seeds_review_queue' %}?page={{ page_obj.next_page_number }}"
+                    hx-target="#seed-review-queue"
+                    hx-swap="outerHTML"
+                    hx-include="[name='review_status'], [name='sort'], [name='q']"
+                    class="inline-flex items-center border-t-2 border-transparent pt-4 pl-1 text-sm font-medium text-gray-500 hover:border-gray-300 hover:text-gray-700">
+                Next →
+            </button>
+            {% endif %}
+        </div>
+    </nav>
+    {% endif %}
+</div>
+
+<script>
+function updateBulkButtons() {
+    const checkboxes = document.querySelectorAll('.seed-checkbox:checked');
+    const approveBtn = document.getElementById('bulk-approve-btn');
+    const rejectBtn = document.getElementById('bulk-reject-btn');
+    
+    if (checkboxes.length > 0) {
+        approveBtn.classList.remove('hidden');
+        rejectBtn.classList.remove('hidden');
+    } else {
+        approveBtn.classList.add('hidden');
+        rejectBtn.classList.add('hidden');
+    }
+}
+</script>

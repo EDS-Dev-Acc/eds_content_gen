@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}Articles - EMCIP{% endblock %}
+
+{% block page_title %}Articles{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <!-- Filters -->
+    <div class="bg-white shadow rounded-lg p-4 mb-6">
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+                <label for="article-search" class="block text-sm font-medium text-gray-700 mb-1">Search</label>
+                <input type="text" 
+                       id="article-search"
+                       placeholder="Title or URL..."
+                       class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                       hx-get="{% url 'console:articles_list' %}"
+                       hx-trigger="keyup changed delay:300ms"
+                       hx-target="#articles-container"
+                       hx-include=".article-filter"
+                       name="search">
+            </div>
+            <div>
+                <label for="article-status" class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                <select name="status" id="article-status"
+                        class="article-filter block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        hx-get="{% url 'console:articles_list' %}"
+                        hx-trigger="change"
+                        hx-target="#articles-container"
+                        hx-include=".article-filter, [name='search']">
+                    <option value="">All statuses</option>
+                    <option value="new">New</option>
+                    <option value="fetched">Fetched</option>
+                    <option value="extracted">Extracted</option>
+                    <option value="translated">Translated</option>
+                    <option value="scored">Scored</option>
+                    <option value="processed">Processed</option>
+                    <option value="failed">Failed</option>
+                </select>
+            </div>
+            <div>
+                <label for="article-quality" class="block text-sm font-medium text-gray-700 mb-1">Quality</label>
+                <select name="quality" id="article-quality"
+                        class="article-filter block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        hx-get="{% url 'console:articles_list' %}"
+                        hx-trigger="change"
+                        hx-target="#articles-container"
+                        hx-include=".article-filter, [name='search']">
+                    <option value="">All quality</option>
+                    <option value="high">High (8+)</option>
+                    <option value="medium">Medium (5-8)</option>
+                    <option value="low">Low (&lt;5)</option>
+                    <option value="unscored">Unscored</option>
+                </select>
+            </div>
+            <div>
+                <label for="article-source" class="block text-sm font-medium text-gray-700 mb-1">Source</label>
+                <select name="source" id="article-source"
+                        class="article-filter block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        hx-get="{% url 'console:articles_list' %}"
+                        hx-trigger="change"
+                        hx-target="#articles-container"
+                        hx-include=".article-filter, [name='search']"
+                        hx-get="{% url 'console:sources_options' %}"
+                        hx-trigger="load once"
+                        hx-swap="innerHTML">
+                    <option value="">All sources</option>
+                </select>
+            </div>
+        </div>
+        <div class="grid grid-cols-1 md:grid-cols-4 gap-4 mt-4">
+            <div>
+                <label for="article-ai" class="block text-sm font-medium text-gray-700 mb-1">AI Detection</label>
+                <select name="ai_detected" id="article-ai"
+                        class="article-filter block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        hx-get="{% url 'console:articles_list' %}"
+                        hx-trigger="change"
+                        hx-target="#articles-container"
+                        hx-include=".article-filter, [name='search']">
+                    <option value="">Any</option>
+                    <option value="true">AI Detected</option>
+                    <option value="false">Not AI</option>
+                </select>
+            </div>
+            <div>
+                <label for="article-used" class="block text-sm font-medium text-gray-700 mb-1">Usage</label>
+                <select name="used" id="article-used"
+                        class="article-filter block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                        hx-get="{% url 'console:articles_list' %}"
+                        hx-trigger="change"
+                        hx-target="#articles-container"
+                        hx-include=".article-filter, [name='search']">
+                    <option value="">Any</option>
+                    <option value="true">Used</option>
+                    <option value="false">Unused</option>
+                </select>
+            </div>
+            <div class="col-span-2 flex items-end justify-end">
+                <button type="button"
+                        onclick="clearFilters()"
+                        class="inline-flex items-center rounded-md bg-gray-100 px-3 py-2 text-sm font-semibold text-gray-700 shadow-sm hover:bg-gray-200">
+                    Clear Filters
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Articles List -->
+    <div id="articles-container"
+         hx-get="{% url 'console:articles_list' %}"
+         hx-trigger="load"
+         hx-swap="innerHTML">
+        <div class="text-center py-8 text-gray-500">
+            <span class="animate-pulse">Loading articles...</span>
+        </div>
+    </div>
+</div>
+
+<script>
+function clearFilters() {
+    document.querySelectorAll('.article-filter').forEach(el => el.value = '');
+    document.getElementById('article-search').value = '';
+    htmx.ajax('GET', '{% url "console:articles_list" %}', '#articles-container');
+}
+</script>
+{% endblock %}

@@ -1,0 +1,66 @@
+<!-- LLM budget status partial -->
+<div class="bg-white shadow rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+        <div class="flex items-center justify-between mb-4">
+            <h3 class="text-base font-semibold leading-6 text-gray-900">Budget Status</h3>
+            {% if budget.is_exceeded %}
+            <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">
+                Exceeded
+            </span>
+            {% elif budget.percent > 90 %}
+            <span class="inline-flex items-center rounded-full bg-yellow-100 px-2.5 py-0.5 text-xs font-medium text-yellow-800">
+                Warning
+            </span>
+            {% else %}
+            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">
+                OK
+            </span>
+            {% endif %}
+        </div>
+
+        <!-- Progress bar -->
+        <div class="mb-2">
+            <div class="w-full bg-gray-200 rounded-full h-4">
+                <div class="h-4 rounded-full transition-all duration-300
+                            {% if budget.percent > 100 %}bg-red-600 w-full
+                            {% elif budget.percent > 90 %}bg-yellow-600
+                            {% else %}bg-green-600{% endif %}"
+                     style="width: {% if budget.percent > 100 %}100{% else %}{{ budget.percent|default:'0' }}{% endif %}%">
+                </div>
+            </div>
+        </div>
+
+        <div class="flex items-center justify-between text-sm">
+            <span class="text-gray-500">
+                ${{ budget.used|default:"0.00"|floatformat:2 }} used
+            </span>
+            <span class="font-medium text-gray-900">
+                ${{ budget.limit|default:"0.00"|floatformat:2 }} limit
+            </span>
+        </div>
+
+        {% if budget.remaining %}
+        <p class="mt-2 text-sm text-gray-600">
+            <span class="font-medium text-green-600">${{ budget.remaining|floatformat:2 }}</span> remaining for {{ budget.period }}
+        </p>
+        {% endif %}
+
+        {% if budget.is_exceeded %}
+        <div class="mt-4 p-3 bg-red-50 rounded-md">
+            <div class="flex">
+                <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                    <path fill-rule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z" clip-rule="evenodd" />
+                </svg>
+                <div class="ml-3">
+                    <p class="text-sm font-medium text-red-800">
+                        Budget exceeded! LLM calls are currently blocked.
+                    </p>
+                    <p class="mt-1 text-xs text-red-700">
+                        Increase budget limit or wait for next {{ budget.period }}.
+                    </p>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>

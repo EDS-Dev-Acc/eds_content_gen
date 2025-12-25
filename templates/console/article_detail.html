@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}Article: {{ article.title|truncatechars:50 }} - EMCIP{% endblock %}
+
+{% block page_title %}Article Details{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <!-- Back button -->
+    <div class="mb-4">
+        <a href="{% url 'console:articles' %}" class="text-indigo-600 hover:text-indigo-500 text-sm font-medium">
+            ← Back to Articles
+        </a>
+    </div>
+
+    <!-- Article Header -->
+    <div class="bg-white shadow rounded-lg p-6 mb-6">
+        <div class="flex justify-between items-start">
+            <div class="flex-1">
+                <h2 class="text-xl font-bold text-gray-900">{{ article.title }}</h2>
+                <p class="mt-1 text-sm text-gray-500">
+                    <a href="{{ article.url }}" target="_blank" class="text-indigo-600 hover:text-indigo-500">
+                        {{ article.url|truncatechars:80 }}
+                    </a>
+                </p>
+                <div class="mt-2 flex items-center space-x-4 text-sm text-gray-500">
+                    <span>Source: <span class="font-medium">{{ article.source.name }}</span></span>
+                    <span>•</span>
+                    <span>Added: {{ article.created_at|date:"M d, Y H:i" }}</span>
+                    <span>•</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-1 text-xs font-medium
+                                 {% if article.status == 'processed' %}bg-green-100 text-green-800
+                                 {% elif article.status == 'failed' %}bg-red-100 text-red-800
+                                 {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ article.status|title }}
+                    </span>
+                </div>
+            </div>
+            <div class="flex items-center space-x-2">
+                {% if article.quality_score %}
+                <div class="text-center">
+                    <div class="text-2xl font-bold {% if article.quality_score >= 8 %}text-green-600{% elif article.quality_score >= 5 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                        {{ article.quality_score|floatformat:1 }}
+                    </div>
+                    <div class="text-xs text-gray-500">Quality Score</div>
+                </div>
+                {% endif %}
+                <button type="button"
+                        hx-post="{% url 'console:article_reprocess' article.id %}"
+                        hx-swap="none"
+                        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                    <svg class="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                    </svg>
+                    Reprocess
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabs -->
+    <div class="bg-white shadow rounded-lg">
+        <div class="border-b border-gray-200">
+            <nav class="-mb-px flex" aria-label="Tabs">
+                <button onclick="switchArticleTab('info')" id="tab-info"
+                        class="article-tab border-indigo-500 text-indigo-600 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    Info
+                </button>
+                <button onclick="switchArticleTab('raw')" id="tab-raw"
+                        class="article-tab border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    Raw Capture
+                </button>
+                <button onclick="switchArticleTab('extracted')" id="tab-extracted"
+                        class="article-tab border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    Extracted
+                </button>
+                <button onclick="switchArticleTab('scores')" id="tab-scores"
+                        class="article-tab border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    Scores
+                </button>
+                <button onclick="switchArticleTab('llm')" id="tab-llm"
+                        class="article-tab border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    LLM Artifacts
+                </button>
+                <button onclick="switchArticleTab('usage')" id="tab-usage"
+                        class="article-tab border-transparent text-gray-500 hover:border-gray-300 hover:text-gray-700 w-1/6 border-b-2 py-4 px-1 text-center text-sm font-medium">
+                    Usage
+                </button>
+            </nav>
+        </div>
+
+        <!-- Tab Panels -->
+        <div class="p-6">
+            <!-- Info Panel -->
+            <div id="panel-info" class="article-panel">
+                <dl class="grid grid-cols-1 gap-x-4 gap-y-6 sm:grid-cols-2">
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Author</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.author|default:"Unknown" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Published Date</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.published_at|date:"M d, Y H:i"|default:"Unknown" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Language</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.language|default:"Unknown" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Word Count</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.word_count|default:0 }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">AI Detected</dt>
+                        <dd class="mt-1 text-sm">
+                            {% if article.ai_detected %}
+                            <span class="inline-flex items-center rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-medium text-red-800">Yes</span>
+                            {% else %}
+                            <span class="inline-flex items-center rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-medium text-green-800">No</span>
+                            {% endif %}
+                        </dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Primary Topic</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.primary_topic|default:"Not classified" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Primary Region</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.primary_region|default:"Not classified" }}</dd>
+                    </div>
+                    <div>
+                        <dt class="text-sm font-medium text-gray-500">Processing Status</dt>
+                        <dd class="mt-1 text-sm text-gray-900">{{ article.status|title }}</dd>
+                    </div>
+                </dl>
+            </div>
+
+            <!-- Raw Panel -->
+            <div id="panel-raw" class="article-panel hidden"
+                 hx-get="{% url 'console:article_raw' article.id %}"
+                 hx-trigger="revealed once"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4 text-gray-500">
+                    <span class="animate-pulse">Loading raw content...</span>
+                </div>
+            </div>
+
+            <!-- Extracted Panel -->
+            <div id="panel-extracted" class="article-panel hidden"
+                 hx-get="{% url 'console:article_extracted' article.id %}"
+                 hx-trigger="revealed once"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4 text-gray-500">
+                    <span class="animate-pulse">Loading extracted content...</span>
+                </div>
+            </div>
+
+            <!-- Scores Panel -->
+            <div id="panel-scores" class="article-panel hidden"
+                 hx-get="{% url 'console:article_scores' article.id %}"
+                 hx-trigger="revealed once"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4 text-gray-500">
+                    <span class="animate-pulse">Loading scores...</span>
+                </div>
+            </div>
+
+            <!-- LLM Artifacts Panel -->
+            <div id="panel-llm" class="article-panel hidden"
+                 hx-get="{% url 'console:article_llm' article.id %}"
+                 hx-trigger="revealed once"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4 text-gray-500">
+                    <span class="animate-pulse">Loading LLM artifacts...</span>
+                </div>
+            </div>
+
+            <!-- Usage Panel -->
+            <div id="panel-usage" class="article-panel hidden"
+                 hx-get="{% url 'console:article_usage' article.id %}"
+                 hx-trigger="revealed once"
+                 hx-swap="innerHTML">
+                <div class="text-center py-4 text-gray-500">
+                    <span class="animate-pulse">Loading usage history...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function switchArticleTab(tab) {
+    // Update tab buttons
+    document.querySelectorAll('.article-tab').forEach(btn => {
+        btn.classList.remove('border-indigo-500', 'text-indigo-600');
+        btn.classList.add('border-transparent', 'text-gray-500');
+    });
+    document.getElementById('tab-' + tab).classList.remove('border-transparent', 'text-gray-500');
+    document.getElementById('tab-' + tab).classList.add('border-indigo-500', 'text-indigo-600');
+    
+    // Update panels
+    document.querySelectorAll('.article-panel').forEach(panel => {
+        panel.classList.add('hidden');
+    });
+    const panel = document.getElementById('panel-' + tab);
+    panel.classList.remove('hidden');
+    
+    // Trigger HTMX load for lazy-loaded panels
+    htmx.trigger(panel, 'revealed');
+}
+</script>
+{% endblock %}

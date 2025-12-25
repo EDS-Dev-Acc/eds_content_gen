@@ -7,7 +7,15 @@ whitenoise==6.6.0
 # Crawler dependencies
 requests==2.32.5
 beautifulsoup4==4.14.3
+lxml==5.3.0
+lxml_html_clean==0.4.3
+newspaper3k==0.2.8
 
 # Task Queue
 celery==5.6.0
 redis==7.1.0
+
+# Language + LLM
+anthropic==0.18.1
+google-cloud-translate==3.15.0
+langdetect==1.0.9

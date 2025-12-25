@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+
+{% block title %}LLM Settings - EMCIP{% endblock %}
+
+{% block page_title %}LLM Settings{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Settings Panel -->
+        <div class="lg:col-span-2">
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Model Configuration</h3>
+                </div>
+                <form hx-patch="{% url 'console:llm_settings_update' %}" 
+                      hx-target="#settings-result"
+                      hx-swap="innerHTML"
+                      class="p-6">
+                    {% csrf_token %}
+                    <div id="settings-result"></div>
+                    
+                    <div id="settings-form"
+                         hx-get="{% url 'console:llm_settings_form' %}"
+                         hx-trigger="load"
+                         hx-swap="innerHTML">
+                        <div class="animate-pulse space-y-4">
+                            <div class="h-10 bg-gray-200 rounded"></div>
+                            <div class="h-10 bg-gray-200 rounded"></div>
+                            <div class="h-10 bg-gray-200 rounded"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="mt-6 flex justify-end">
+                        <button type="submit"
+                                class="inline-flex items-center rounded-md bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                            Save Settings
+                        </button>
+                    </div>
+                </form>
+            </div>
+
+            <!-- Usage Statistics -->
+            <div class="mt-6 bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Usage Statistics</h3>
+                </div>
+                <div class="p-6">
+                    <!-- Period Selector -->
+                    <div class="mb-4">
+                        <select id="usage-period"
+                                class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                hx-get="{% url 'console:llm_usage_stats' %}"
+                                hx-trigger="change, load"
+                                hx-target="#usage-stats"
+                                hx-swap="innerHTML"
+                                name="period">
+                            <option value="day">Today</option>
+                            <option value="week" selected>This Week</option>
+                            <option value="month">This Month</option>
+                        </select>
+                    </div>
+                    
+                    <div id="usage-stats">
+                        <div class="animate-pulse space-y-4">
+                            <div class="h-20 bg-gray-200 rounded"></div>
+                            <div class="h-40 bg-gray-200 rounded"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Budget Panel -->
+        <div class="lg:col-span-1">
+            <div class="bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Budget Status</h3>
+                </div>
+                <div id="budget-status" class="p-6"
+                     hx-get="{% url 'console:llm_budget_status' %}"
+                     hx-trigger="load, every 60s"
+                     hx-swap="innerHTML">
+                    <div class="animate-pulse space-y-4">
+                        <div class="h-24 bg-gray-200 rounded"></div>
+                        <div class="h-24 bg-gray-200 rounded"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Available Models -->
+            <div class="mt-6 bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Available Models</h3>
+                </div>
+                <div id="models-list" class="p-4"
+                     hx-get="{% url 'console:llm_models_list' %}"
+                     hx-trigger="load"
+                     hx-swap="innerHTML">
+                    <div class="animate-pulse space-y-2">
+                        <div class="h-8 bg-gray-200 rounded"></div>
+                        <div class="h-8 bg-gray-200 rounded"></div>
+                        <div class="h-8 bg-gray-200 rounded"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Activity -->
+            <div class="mt-6 bg-white shadow rounded-lg">
+                <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Recent LLM Calls</h3>
+                </div>
+                <div id="recent-logs" class="p-4 max-h-80 overflow-y-auto"
+                     hx-get="{% url 'console:llm_recent_logs' %}"
+                     hx-trigger="load, every 30s"
+                     hx-swap="innerHTML">
+                    <div class="animate-pulse space-y-2">
+                        <div class="h-12 bg-gray-200 rounded"></div>
+                        <div class="h-12 bg-gray-200 rounded"></div>
+                        <div class="h-12 bg-gray-200 rounded"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

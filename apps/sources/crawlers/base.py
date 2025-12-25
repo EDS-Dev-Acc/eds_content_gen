@@ -6,6 +6,7 @@ All crawler implementations should inherit from this.
 from abc import ABC, abstractmethod
 from datetime import datetime
 from django.utils import timezone
+from django.conf import settings
 import logging
 
 logger = logging.getLogger(__name__)
@@ -101,6 +102,26 @@ class BaseCrawler(ABC):
             )
 
             logger.info(f"Saved article: {title} ({url})")
+
+            if getattr(settings, 'AUTO_PROCESS_ARTICLES', False):
+                try:
+                    from apps.articles.tasks import process_article_pipeline
+                    from celery import current_task
+                    
+                    # Propagate request_id from current task context if available
+                    headers = {}
+                    if current_task and hasattr(current_task.request, 'headers'):
+                        task_headers = current_task.request.headers or {}
+                        if 'request_id' in task_headers:
+                            headers['request_id'] = task_headers['request_id']
+                    
+                    process_article_pipeline.apply_async(
+                        args=[str(article.id)],
+                        headers=headers if headers else None,
+                    )
+                except Exception as task_exc:
+                    logger.warning("Could not queue processing pipeline for %s: %s", url, task_exc)
+
             return article
 
         except Exception as e:

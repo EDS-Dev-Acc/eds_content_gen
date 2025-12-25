@@ -19,7 +19,95 @@ EMCIP automates the process of:
 - **Storage**: AWS S3 (or MinIO for local)
 - **LLM**: Claude Sonnet 4 (primary), GPT-4 (fallback)
 - **Translation**: Google Translate API
-- **Crawling**: Scrapy, Playwright, Selenium
+- **Crawling**: Scrapy, Playwright (hybrid fetching)
+
+## 📦 Architecture (Phases 2-8)
+
+### Phase 2: Interface Abstractions
+Clean separation of concerns with pluggable components:
+- `Fetcher` - HTTP/Browser content fetching
+- `LinkExtractor` - Parse links from HTML
+- `Paginator` - Handle pagination strategies
+
+### Phase 3: Pagination Memory
+Persistent pagination state in Source model for resumable crawls.
+
+### Phase 4: Playwright JS Handling
+Browser-based fetching for JavaScript-heavy sites:
+- `HTTPFetcher` - Fast HTTP requests
+- `PlaywrightFetcher` - Full browser rendering
+- `HybridFetcher` - HTTP-first with browser fallback
+
+### Phase 5: Extraction Quality
+Hybrid content extraction combining multiple strategies:
+- Trafilatura (primary)
+- Newspaper3k (fallback)
+- Quality scoring (EXCELLENT/GOOD/FAIR/POOR)
+
+### Phase 6: State Machine
+Robust article processing with state transitions:
+```
+collected → extracting → extracted → translating → translated → scoring → scored → completed
+```
+
+### Phase 7: LLM Hardening
+Production-ready LLM integration:
+- Versioned prompt templates
+- Token counting and cost tracking
+- Response caching
+- Error handling and retries
+
+### Phase 8: Observability
+Full monitoring and debugging support:
+- Structured JSON logging
+- Metrics collection (counters, gauges, histograms)
+- Health check endpoints
+- Request tracing with correlation IDs
+
+### Phase 9: Final Integration
+All components validated working together:
+- Cross-phase integration testing (30/30 tests passing)
+- Package exports and API consistency
+- Documentation updates
+
+### Phase 10: Operator Console MVP
+Complete REST API for operators:
+- JWT authentication with SimpleJWT
+- Sources CRUD with crawl triggers
+- Runs API with filtering and aggregation
+- Schedule editor with django-celery-beat
+- Seeds manager with import/validate/promote
+- Article viewer with 7-tab detail
+- LLM settings and budget management
+- HTMX templates for Operator Console UI
+
+### Phase 11: API Gap Analysis Fixes
+Security hardening and UX parity:
+- SSRFGuard, URLNormalizer, SafeHTTPClient
+- ErrorCode enum with 35+ codes
+- Enhanced filters across all endpoints
+- Discover-entrypoints, test-crawl endpoints
+
+### Phase 12-13: Content Generation Pipeline
+LLM-powered content creation:
+- ContentOpportunity detection with gap analysis
+- DraftGenerator with 8 content types
+- Quality and originality scoring
+- Async task pipeline with Celery
+
+### Phase 14: Production API Improvements
+Observability and performance:
+- Prometheus metrics integration
+- Request ID middleware
+- Payload lazy loading
+- Export job async flow
+
+### Phase 15: Production Deployment
+Docker and cloud-ready:
+- Docker Compose with full stack
+- OpenTelemetry tracing
+- Nginx reverse proxy
+- Jaeger, Prometheus, Grafana profiles
 
 ## 🌍 Regional Distribution
 
@@ -32,9 +120,11 @@ EMCIP automates the process of:
 
 ## 📋 Current Status
 
-**Phase**: 0 - Preparation
-**Last Updated**: 2024-12-20
-**Status**: Initial setup
+**Phase**: 15 Complete + Phase 14.1 Audit  
+**Last Updated**: 2025-12-24  
+**Status**: Production Ready - Pre-Tagging Audit Complete
+
+All core phases (2-15) complete with comprehensive API gap analysis fixes.
 
 See [PROJECT_STATE.md](PROJECT_STATE.md) for detailed status.
 
@@ -62,21 +152,33 @@ venv\Scripts\activate
 # macOS/Linux:
 source venv/bin/activate
 
-# Install dependencies (after Session 1)
+# Install dependencies
 pip install -r requirements.txt
 
 # Copy environment variables
 cp .env.example .env
 # Edit .env with your actual values
 
-# Run migrations (after Session 2)
+# Run migrations
 python manage.py migrate
 
-# Create superuser (after Session 3)
+# Create superuser
 python manage.py createsuperuser
 
 # Run development server
 python manage.py runserver
+```
+
+### Health Check Endpoints
+
+Once running, the following endpoints are available:
+
+```
+GET /health/   - Full health check
+GET /livez/    - Kubernetes liveness probe
+GET /readyz/   - Kubernetes readiness probe
+GET /metrics/  - Application metrics
+GET /status/   - Application status summary
 ```
 
 ## 📚 Documentation
@@ -84,7 +186,7 @@ python manage.py runserver
 - **[claude.md](claude.md)** - Complete implementation guide for building with LLMs
 - **[PROJECT_STATE.md](PROJECT_STATE.md)** - Current project state and progress
 - **[BUILD_LOG.md](BUILD_LOG.md)** - Detailed session-by-session build history
-- **docs/** - Additional documentation (coming soon)
+- **[docs/TESTING_GUIDE.md](docs/TESTING_GUIDE.md)** - Testing documentation
 
 ## 🗂️ Project Structure
 
@@ -98,13 +200,18 @@ emcip/
 │   ├── celery.py
 │   └── urls.py
 ├── apps/
-│   ├── core/              # Shared utilities and base models
+│   ├── core/              # Observability, health checks, utilities
 │   ├── sources/           # Source management and crawling
-│   ├── articles/          # Article storage and processing
-│   ├── content/           # Content generation and LLM integration
+│   │   └── crawlers/      # Interface-based crawling system
+│   │       ├── fetchers/  # HTTP, Playwright, Hybrid fetchers
+│   │       ├── extractors/# Content extraction strategies
+│   │       └── pagination/# Pagination strategies
+│   ├── articles/          # Article storage, state machine, processing
+│   ├── content/           # LLM integration, prompts, token tracking
 │   ├── workflows/         # Editorial workflows and quotas
 │   └── analytics/         # Metrics and monitoring
-├── scripts/               # Utility scripts
+│   └── pipeline.py        # Unified pipeline runner
+├── scripts/               # Utility and test scripts
 ├── docs/                  # Documentation
 ├── requirements.txt       # Python dependencies
 ├── .env.example          # Environment variables template
@@ -121,6 +228,27 @@ This project follows an incremental build approach:
 4. Commit working code to git
 
 ## 🧪 Testing
+
+```bash
+# Run phase-specific tests
+python scripts/test_integration.py      # All phases integration
+python scripts/test_pagination_memory.py # Phase 3
+python scripts/test_playwright.py       # Phase 4
+python scripts/test_extraction.py       # Phase 5
+python scripts/test_state_machine.py    # Phase 6
+python scripts/test_llm_hardening.py    # Phase 7
+python scripts/test_observability.py    # Phase 8
+
+# Run Django tests
+python manage.py test
+
+# Run specific app tests
+python manage.py test apps.articles
+
+# Run with coverage
+coverage run --source='.' manage.py test
+coverage report
+```
 
 ```bash
 # Run all tests

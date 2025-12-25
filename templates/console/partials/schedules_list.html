@@ -1,0 +1,55 @@
+<!-- Schedules row partial for HTMX updates -->
+{% for schedule in schedules %}
+<tr>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <div class="text-sm font-medium text-gray-900">{{ schedule.source.name }}</div>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {% if schedule.interval %}
+            Every {{ schedule.interval.every }} {{ schedule.interval.period }}
+        {% elif schedule.crontab %}
+            {{ schedule.crontab.minute }} {{ schedule.crontab.hour }} {{ schedule.crontab.day_of_month }} {{ schedule.crontab.month_of_year }} {{ schedule.crontab.day_of_week }}
+        {% else %}
+            Not configured
+        {% endif %}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap">
+        <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
+                     {% if schedule.enabled %}bg-green-100 text-green-800{% else %}bg-gray-100 text-gray-800{% endif %}">
+            {{ schedule.enabled|yesno:"Enabled,Disabled" }}
+        </span>
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {{ schedule.last_run_at|date:"M d, H:i"|default:"Never" }}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+        {{ schedule.next_run|date:"M d, H:i"|default:"Not scheduled" }}
+    </td>
+    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <button hx-post="{% url 'console:schedule_toggle' schedule.id %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                class="{% if schedule.enabled %}text-yellow-600 hover:text-yellow-900{% else %}text-green-600 hover:text-green-900{% endif %} mr-3">
+            {{ schedule.enabled|yesno:"Pause,Enable" }}
+        </button>
+        <button hx-post="{% url 'console:schedule_run_now' schedule.id %}"
+                hx-swap="none"
+                class="text-green-600 hover:text-green-900 mr-3">
+            Run Now
+        </button>
+        <button hx-delete="{% url 'console:schedule_delete' schedule.id %}"
+                hx-target="closest tr"
+                hx-swap="outerHTML"
+                hx-confirm="Are you sure you want to delete this schedule?"
+                class="text-red-600 hover:text-red-900">
+            Delete
+        </button>
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+        No schedules found. <a href="#" onclick="openModal('add-schedule-modal')" class="text-indigo-600 hover:text-indigo-500">Create one?</a>
+    </td>
+</tr>
+{% endfor %}

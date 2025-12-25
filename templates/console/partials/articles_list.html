@@ -1,0 +1,109 @@
+<!-- Articles grid partial for HTMX updates -->
+<div class="grid grid-cols-1 gap-4">
+    {% for article in articles %}
+    <a href="{% url 'console:article_detail' article.id %}" 
+       class="block bg-white shadow rounded-lg p-4 hover:shadow-md transition-shadow">
+        <div class="flex justify-between items-start">
+            <div class="flex-1 min-w-0">
+                <h3 class="text-sm font-medium text-gray-900 truncate">{{ article.title }}</h3>
+                <p class="mt-1 text-xs text-gray-500 truncate">{{ article.url }}</p>
+                <div class="mt-2 flex items-center space-x-4 text-xs text-gray-500">
+                    <span>{{ article.source.name }}</span>
+                    <span>•</span>
+                    <span>{{ article.created_at|date:"M d, Y" }}</span>
+                    <span>•</span>
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                 {% if article.status == 'processed' %}bg-green-100 text-green-800
+                                 {% elif article.status == 'failed' %}bg-red-100 text-red-800
+                                 {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ article.status|title }}
+                    </span>
+                    {% if article.ai_detected %}
+                    <span class="inline-flex items-center rounded-full bg-red-100 px-2 py-0.5 text-xs font-medium text-red-800">
+                        AI
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="ml-4 flex-shrink-0 text-right">
+                {% if article.quality_score %}
+                <div class="text-lg font-bold {% if article.quality_score >= 8 %}text-green-600{% elif article.quality_score >= 5 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                    {{ article.quality_score|floatformat:1 }}
+                </div>
+                <div class="text-xs text-gray-500">Score</div>
+                {% else %}
+                <div class="text-sm text-gray-400">Unscored</div>
+                {% endif %}
+            </div>
+        </div>
+    </a>
+    {% empty %}
+    <div class="text-center py-8 text-gray-500">
+        No articles found matching your criteria.
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Pagination -->
+{% if page_obj.has_other_pages %}
+<div class="mt-6 flex items-center justify-between border-t border-gray-200 bg-white px-4 py-3 sm:px-6">
+    <div class="flex flex-1 justify-between sm:hidden">
+        {% if page_obj.has_previous %}
+        <button hx-get="{% url 'console:articles_list' %}?page={{ page_obj.previous_page_number }}"
+                hx-target="#articles-container"
+                hx-swap="innerHTML"
+                class="relative inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Previous
+        </button>
+        {% endif %}
+        {% if page_obj.has_next %}
+        <button hx-get="{% url 'console:articles_list' %}?page={{ page_obj.next_page_number }}"
+                hx-target="#articles-container"
+                hx-swap="innerHTML"
+                class="relative ml-3 inline-flex items-center rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50">
+            Next
+        </button>
+        {% endif %}
+    </div>
+    <div class="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
+        <div>
+            <p class="text-sm text-gray-700">
+                Showing <span class="font-medium">{{ page_obj.start_index }}</span> to <span class="font-medium">{{ page_obj.end_index }}</span> of <span class="font-medium">{{ page_obj.paginator.count }}</span> results
+            </p>
+        </div>
+        <div>
+            <nav class="isolate inline-flex -space-x-px rounded-md shadow-sm" aria-label="Pagination">
+                {% if page_obj.has_previous %}
+                <button hx-get="{% url 'console:articles_list' %}?page={{ page_obj.previous_page_number }}"
+                        hx-target="#articles-container"
+                        hx-swap="innerHTML"
+                        hx-include=".article-filter, [name='search']"
+                        class="relative inline-flex items-center rounded-l-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    <span class="sr-only">Previous</span>
+                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M12.79 5.23a.75.75 0 01-.02 1.06L8.832 10l3.938 3.71a.75.75 0 11-1.04 1.08l-4.5-4.25a.75.75 0 010-1.08l4.5-4.25a.75.75 0 011.06.02z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+                {% endif %}
+                
+                <span class="relative inline-flex items-center px-4 py-2 text-sm font-semibold text-gray-900 ring-1 ring-inset ring-gray-300">
+                    Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+                </span>
+                
+                {% if page_obj.has_next %}
+                <button hx-get="{% url 'console:articles_list' %}?page={{ page_obj.next_page_number }}"
+                        hx-target="#articles-container"
+                        hx-swap="innerHTML"
+                        hx-include=".article-filter, [name='search']"
+                        class="relative inline-flex items-center rounded-r-md px-2 py-2 text-gray-400 ring-1 ring-inset ring-gray-300 hover:bg-gray-50">
+                    <span class="sr-only">Next</span>
+                    <svg class="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                        <path fill-rule="evenodd" d="M7.21 14.77a.75.75 0 01.02-1.06L11.168 10 7.23 6.29a.75.75 0 111.04-1.08l4.5 4.25a.75.75 0 010 1.08l-4.5 4.25a.75.75 0 01-1.06-.02z" clip-rule="evenodd" />
+                    </svg>
+                </button>
+                {% endif %}
+            </nav>
+        </div>
+    </div>
+</div>
+{% endif %}

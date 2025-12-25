@@ -1,0 +1,66 @@
+<!-- LLM usage stats partial -->
+<div class="bg-white shadow rounded-lg">
+    <div class="px-4 py-5 sm:p-6">
+        <h3 class="text-base font-semibold leading-6 text-gray-900 mb-4">Usage Statistics</h3>
+        
+        <!-- Period selector -->
+        <div class="flex space-x-2 mb-4">
+            <button hx-get="{% url 'console:llm_usage_stats' %}?period=day"
+                    hx-target="#usage-stats"
+                    hx-swap="outerHTML"
+                    class="px-3 py-1 text-sm rounded-md {% if period == 'day' %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                Today
+            </button>
+            <button hx-get="{% url 'console:llm_usage_stats' %}?period=week"
+                    hx-target="#usage-stats"
+                    hx-swap="outerHTML"
+                    class="px-3 py-1 text-sm rounded-md {% if period == 'week' %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                This Week
+            </button>
+            <button hx-get="{% url 'console:llm_usage_stats' %}?period=month"
+                    hx-target="#usage-stats"
+                    hx-swap="outerHTML"
+                    class="px-3 py-1 text-sm rounded-md {% if period == 'month' %}bg-indigo-600 text-white{% else %}bg-gray-100 text-gray-700 hover:bg-gray-200{% endif %}">
+                This Month
+            </button>
+        </div>
+
+        <!-- Stats Grid -->
+        <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Requests</p>
+                <p class="text-2xl font-bold text-gray-900">{{ usage.requests|default:"0" }}</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Tokens (Input)</p>
+                <p class="text-2xl font-bold text-gray-900">{{ usage.input_tokens|default:"0"|intcomma }}</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Tokens (Output)</p>
+                <p class="text-2xl font-bold text-gray-900">{{ usage.output_tokens|default:"0"|intcomma }}</p>
+            </div>
+            <div class="bg-gray-50 rounded-lg p-4">
+                <p class="text-sm text-gray-500">Cost</p>
+                <p class="text-2xl font-bold text-gray-900">${{ usage.cost|default:"0.00"|floatformat:2 }}</p>
+            </div>
+        </div>
+
+        <!-- Usage by Task Type -->
+        {% if usage.by_task %}
+        <div class="mt-6">
+            <h4 class="text-sm font-medium text-gray-700 mb-2">By Task Type</h4>
+            <div class="space-y-2">
+                {% for task in usage.by_task %}
+                <div class="flex items-center justify-between">
+                    <span class="text-sm text-gray-600">{{ task.task_type }}</span>
+                    <div class="flex items-center space-x-4">
+                        <span class="text-sm text-gray-500">{{ task.count }} requests</span>
+                        <span class="text-sm font-medium text-gray-900">${{ task.cost|floatformat:2 }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>

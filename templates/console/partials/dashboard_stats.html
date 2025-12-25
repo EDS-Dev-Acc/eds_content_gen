@@ -1,0 +1,40 @@
+<!-- Dashboard stats cards partial for HTMX updates -->
+<div class="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
+    <!-- Total Articles -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Total Articles</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.total_articles|default:"0" }}</dd>
+        <p class="mt-2 text-sm text-gray-600">
+            <span class="text-green-600 font-medium">+{{ stats.articles_today|default:"0" }}</span> today
+        </p>
+    </div>
+
+    <!-- Active Sources -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Active Sources</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.active_sources|default:"0" }}</dd>
+        <p class="mt-2 text-sm text-gray-600">
+            <span class="text-blue-600 font-medium">{{ stats.total_sources|default:"0" }}</span> total
+        </p>
+    </div>
+
+    <!-- Running Crawls -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">Running Crawls</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight text-gray-900">{{ stats.running_crawls|default:"0" }}</dd>
+        <p class="mt-2 text-sm text-gray-600">
+            <span class="text-yellow-600 font-medium">{{ stats.pending_crawls|default:"0" }}</span> pending
+        </p>
+    </div>
+
+    <!-- LLM Budget -->
+    <div class="overflow-hidden rounded-lg bg-white px-4 py-5 shadow sm:p-6">
+        <dt class="truncate text-sm font-medium text-gray-500">LLM Budget Used</dt>
+        <dd class="mt-1 text-3xl font-semibold tracking-tight {% if stats.budget_percent > 90 %}text-red-600{% elif stats.budget_percent > 75 %}text-yellow-600{% else %}text-gray-900{% endif %}">
+            {{ stats.budget_percent|default:"0" }}%
+        </dd>
+        <p class="mt-2 text-sm text-gray-600">
+            ${{ stats.budget_used|default:"0.00"|floatformat:2 }} of ${{ stats.budget_limit|default:"0.00"|floatformat:2 }}
+        </p>
+    </div>
+</div>

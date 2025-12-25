@@ -1,0 +1,45 @@
+<!-- Recent articles partial for dashboard -->
+<div class="overflow-hidden bg-white shadow sm:rounded-lg">
+    <div class="px-4 py-5 sm:px-6">
+        <h3 class="text-base font-semibold leading-6 text-gray-900">Recent Articles</h3>
+    </div>
+    <ul role="list" class="divide-y divide-gray-200">
+        {% for article in recent_articles %}
+        <li class="px-4 py-4 sm:px-6 hover:bg-gray-50">
+            <a href="{% url 'console:article_detail' article.id %}" class="flex items-center justify-between">
+                <div class="flex-1 min-w-0">
+                    <p class="text-sm font-medium text-gray-900 truncate">{{ article.title|truncatechars:50 }}</p>
+                    <p class="text-xs text-gray-500 mt-1">
+                        {{ article.source.name }} • {{ article.created_at|timesince }} ago
+                    </p>
+                </div>
+                <div class="ml-4 flex-shrink-0 flex items-center space-x-3">
+                    {% if article.quality_score %}
+                    <span class="text-sm font-bold {% if article.quality_score >= 8 %}text-green-600{% elif article.quality_score >= 5 %}text-yellow-600{% else %}text-red-600{% endif %}">
+                        {{ article.quality_score|floatformat:1 }}
+                    </span>
+                    {% endif %}
+                    <span class="inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium
+                                 {% if article.status == 'processed' %}bg-green-100 text-green-800
+                                 {% elif article.status == 'failed' %}bg-red-100 text-red-800
+                                 {% else %}bg-gray-100 text-gray-800{% endif %}">
+                        {{ article.status|title }}
+                    </span>
+                </div>
+            </a>
+        </li>
+        {% empty %}
+        <li class="px-4 py-6 text-center text-gray-500 text-sm">
+            No articles yet.
+            <a href="{% url 'console:sources' %}" class="text-indigo-600 hover:underline">Start crawling</a>
+        </li>
+        {% endfor %}
+    </ul>
+    {% if recent_articles %}
+    <div class="px-4 py-3 bg-gray-50 text-right sm:px-6">
+        <a href="{% url 'console:articles' %}" class="text-sm font-medium text-indigo-600 hover:text-indigo-500">
+            View all articles →
+        </a>
+    </div>
+    {% endif %}
+</div>

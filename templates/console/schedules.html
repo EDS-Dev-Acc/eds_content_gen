@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Schedules - EMCIP{% endblock %}
+
+{% block page_title %}Schedules{% endblock %}
+
+{% block content %}
+<div class="px-4 sm:px-0">
+    <!-- Actions -->
+    <div class="flex justify-between items-center mb-4">
+        <div class="flex space-x-4">
+            <select name="schedule-status"
+                    class="rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                    hx-get="{% url 'console:schedules_list' %}"
+                    hx-trigger="change"
+                    hx-target="#schedules-table-body">
+                <option value="">All statuses</option>
+                <option value="enabled">Enabled</option>
+                <option value="disabled">Disabled</option>
+            </select>
+        </div>
+        <div class="flex space-x-2">
+            <button type="button"
+                    hx-post="{% url 'console:schedules_pause_all' %}"
+                    hx-target="#schedules-table-body"
+                    hx-confirm="Are you sure you want to pause all schedules?"
+                    class="inline-flex items-center rounded-md bg-yellow-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-yellow-500">
+                <svg class="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 5.25v13.5m-7.5-13.5v13.5" />
+                </svg>
+                Pause All
+            </button>
+            <button type="button"
+                    onclick="openModal('add-schedule-modal')"
+                    class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
+                <svg class="-ml-0.5 mr-1.5 h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                    <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
+                </svg>
+                Add Schedule
+            </button>
+        </div>
+    </div>
+
+    <!-- Schedules Table -->
+    <div class="bg-white shadow overflow-hidden sm:rounded-md">
+        <table class="min-w-full divide-y divide-gray-200">
+            <thead class="bg-gray-50">
+                <tr>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Schedule</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Last Run</th>
+                    <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Next Run</th>
+                    <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Actions</th>
+                </tr>
+            </thead>
+            <tbody id="schedules-table-body" class="bg-white divide-y divide-gray-200"
+                   hx-get="{% url 'console:schedules_list' %}"
+                   hx-trigger="load"
+                   hx-swap="innerHTML">
+                <tr>
+                    <td colspan="6" class="px-6 py-4 text-center text-gray-500">
+                        <span class="animate-pulse">Loading schedules...</span>
+                    </td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Add Schedule Modal -->
+<div id="add-schedule-modal" class="hidden fixed inset-0 z-50 overflow-y-auto" aria-labelledby="modal-title" role="dialog" aria-modal="true">
+    <div class="flex min-h-full items-end justify-center p-4 text-center sm:items-center sm:p-0">
+        <div class="fixed inset-0 bg-gray-500 bg-opacity-75 transition-opacity" onclick="closeModal('add-schedule-modal')"></div>
+        <div class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
+            <form hx-post="{% url 'console:schedule_create' %}" hx-target="#schedules-table-body" hx-swap="innerHTML">
+                {% csrf_token %}
+                <div>
+                    <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-4">Add New Schedule</h3>
+                    <div class="space-y-4">
+                        <div>
+                            <label for="schedule-source" class="block text-sm font-medium text-gray-700">Source</label>
+                            <select name="source_id" id="schedule-source" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                    hx-get="{% url 'console:sources_options' %}"
+                                    hx-trigger="load"
+                                    hx-swap="innerHTML">
+                                <option value="">Loading sources...</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label for="schedule-type" class="block text-sm font-medium text-gray-700">Schedule Type</label>
+                            <select name="schedule_type" id="schedule-type" required
+                                    class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                    onchange="toggleScheduleFields(this.value)">
+                                <option value="interval">Interval</option>
+                                <option value="crontab">Crontab</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Interval fields -->
+                        <div id="interval-fields">
+                            <div class="grid grid-cols-2 gap-4">
+                                <div>
+                                    <label for="interval-every" class="block text-sm font-medium text-gray-700">Every</label>
+                                    <input type="number" name="interval_every" id="interval-every" value="1" min="1"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="interval-period" class="block text-sm font-medium text-gray-700">Period</label>
+                                    <select name="interval_period" id="interval-period"
+                                            class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                        <option value="minutes">Minutes</option>
+                                        <option value="hours" selected>Hours</option>
+                                        <option value="days">Days</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Crontab fields (hidden by default) -->
+                        <div id="crontab-fields" class="hidden">
+                            <div class="grid grid-cols-5 gap-2">
+                                <div>
+                                    <label for="cron-minute" class="block text-xs font-medium text-gray-700">Minute</label>
+                                    <input type="text" name="cron_minute" id="cron-minute" value="0" placeholder="*"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="cron-hour" class="block text-xs font-medium text-gray-700">Hour</label>
+                                    <input type="text" name="cron_hour" id="cron-hour" value="*" placeholder="*"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="cron-day" class="block text-xs font-medium text-gray-700">Day</label>
+                                    <input type="text" name="cron_day_of_month" id="cron-day" value="*" placeholder="*"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="cron-month" class="block text-xs font-medium text-gray-700">Month</label>
+                                    <input type="text" name="cron_month_of_year" id="cron-month" value="*" placeholder="*"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                                <div>
+                                    <label for="cron-dow" class="block text-xs font-medium text-gray-700">DOW</label>
+                                    <input type="text" name="cron_day_of_week" id="cron-dow" value="*" placeholder="*"
+                                           class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                </div>
+                            </div>
+                            <p class="mt-1 text-xs text-gray-500">Format: minute hour day month day-of-week (0-59 0-23 1-31 1-12 0-6)</p>
+                        </div>
+                        
+                        <div class="flex items-center">
+                            <input type="checkbox" name="enabled" id="schedule-enabled" checked
+                                   class="h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                            <label for="schedule-enabled" class="ml-2 block text-sm text-gray-700">Enable schedule</label>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-5 sm:mt-6 sm:grid sm:grid-flow-row-dense sm:grid-cols-2 sm:gap-3">
+                    <button type="submit"
+                            class="inline-flex w-full justify-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500 sm:col-start-2">
+                        Create Schedule
+                    </button>
+                    <button type="button" onclick="closeModal('add-schedule-modal')"
+                            class="mt-3 inline-flex w-full justify-center rounded-md bg-white px-3 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 sm:col-start-1 sm:mt-0">
+                        Cancel
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleScheduleFields(type) {
+    if (type === 'interval') {
+        document.getElementById('interval-fields').classList.remove('hidden');
+        document.getElementById('crontab-fields').classList.add('hidden');
+    } else {
+        document.getElementById('interval-fields').classList.add('hidden');
+        document.getElementById('crontab-fields').classList.remove('hidden');
+    }
+}
+
+function openModal(id) {
+    document.getElementById(id).classList.remove('hidden');
+}
+
+function closeModal(id) {
+    document.getElementById(id).classList.add('hidden');
+}
+
+document.body.addEventListener('htmx:afterSwap', function(evt) {
+    if (evt.detail.target.id === 'schedules-table-body') {
+        document.querySelectorAll('[id$="-modal"]').forEach(modal => {
+            modal.classList.add('hidden');
+        });
+    }
+});
+</script>
+{% endblock %}
