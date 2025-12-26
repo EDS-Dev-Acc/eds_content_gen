@@ -414,3 +414,279 @@ def crawl_all_active_sources():
 
     logger.info(f"Queued {queued}/{total} crawl tasks")
     return result
+
+
+@shared_task(bind=True, max_retries=2)
+def run_crawl_job(self, job_id):
+    """
+    Execute a Control Center crawl job.
+    
+    This task is triggered from the Control Center UI when a user starts a job.
+    It handles both single-source and multi-source jobs, with support for:
+    - Seeds as starting URLs
+    - Config overrides
+    - Progress tracking and events
+    - Pause/resume capability
+    
+    Args:
+        job_id: UUID of the CrawlJob to execute
+        
+    Returns:
+        dict with execution results
+    """
+    from apps.sources.models import Source, CrawlJob, CrawlJobEvent, CrawlJobSourceResult, CrawlJobSeed
+    from apps.sources.crawlers import get_crawler
+    
+    logger.info(f"Starting run_crawl_job task for job {job_id}")
+    
+    try:
+        job = CrawlJob.objects.get(id=job_id)
+    except CrawlJob.DoesNotExist:
+        logger.error(f"CrawlJob {job_id} not found")
+        return {'success': False, 'error': 'Job not found'}
+    
+    # Check if job can be run
+    if job.status not in ['queued', 'draft']:
+        logger.warning(f"Job {job_id} has status '{job.status}', cannot start")
+        return {'success': False, 'error': f'Job status is {job.status}'}
+    
+    # Update job to running
+    job.status = 'running'
+    job.started_at = timezone.now()
+    job.task_id = self.request.id
+    job.save()
+    
+    # Log start event
+    CrawlJobEvent.objects.create(
+        crawl_job=job,
+        event_type='started',
+        severity='info',
+        message=f'Job started by Celery task {self.request.id}',
+    )
+    
+    try:
+        # Get sources for this job
+        source_results = CrawlJobSourceResult.objects.filter(crawl_job=job).select_related('source')
+        
+        if source_results.exists():
+            # Multi-source job
+            sources = [sr.source for sr in source_results]
+            logger.info(f"Job {job_id} has {len(sources)} sources")
+        elif job.source:
+            # Single source job
+            sources = [job.source]
+            logger.info(f"Job {job_id} has single source: {job.source.name}")
+        else:
+            raise ValueError("Job has no sources configured")
+        
+        # Get seeds for starting URLs (explicit seeds take priority)
+        seed_urls = list(job.job_seeds.values_list('url', flat=True))
+        
+        # If no explicit seeds, use source base URLs as starting points
+        if not seed_urls:
+            seed_urls = [source.url for source in sources if source.url]
+            logger.info(f"Job {job_id} using {len(seed_urls)} source URLs as seeds")
+        else:
+            logger.info(f"Job {job_id} has {len(seed_urls)} explicit seed URLs")
+        
+        # Initialize counters
+        total_found = 0
+        total_new = 0
+        total_duplicates = 0
+        total_errors = 0
+        total_pages = 0
+        
+        # Process each source
+        for source in sources:
+            # Check for pause/stop
+            job.refresh_from_db()
+            if job.status == 'paused':
+                logger.info(f"Job {job_id} paused, waiting...")
+                CrawlJobEvent.objects.create(
+                    crawl_job=job,
+                    event_type='paused',
+                    severity='info',
+                    message='Job paused during execution',
+                )
+                return {'success': True, 'status': 'paused', 'message': 'Job paused'}
+            
+            if job.status in ['stopped', 'cancelled']:
+                logger.info(f"Job {job_id} stopped/cancelled")
+                return {'success': True, 'status': job.status, 'message': f'Job {job.status}'}
+            
+            logger.info(f"Processing source: {source.name}")
+            
+            # Update source result if multi-source
+            source_result = source_results.filter(source=source).first() if source_results.exists() else None
+            if source_result:
+                source_result.status = 'running'
+                source_result.started_at = timezone.now()
+                source_result.save()
+            
+            try:
+                # Build crawler config
+                crawler_config = source.crawler_config.copy() if source.crawler_config else {}
+                
+                # Apply job config overrides
+                if job.config_overrides:
+                    crawler_config.update(job.config_overrides)
+                
+                # Use seeds as starting URLs if provided
+                if seed_urls:
+                    crawler_config['start_urls'] = seed_urls
+                
+                # Apply job limits if set
+                if job.max_pages_run:
+                    crawler_config['max_pages'] = job.max_pages_run
+                if job.max_pages_domain:
+                    crawler_config['max_pages_domain'] = job.max_pages_domain
+                if job.crawl_depth:
+                    crawler_config['depth_limit'] = job.crawl_depth
+                
+                # Get crawler and execute
+                crawler = get_crawler(source, config=crawler_config)
+                results = crawler.crawl()
+                
+                # Accumulate results
+                found = results.get('total_found', 0)
+                new = results.get('new_articles', 0)
+                dupes = results.get('duplicates', 0)
+                errors = results.get('errors', 0)
+                pages = results.get('pages_crawled', 1)
+                
+                total_found += found
+                total_new += new
+                total_duplicates += dupes
+                total_errors += errors
+                total_pages += pages
+                
+                # Update source result
+                if source_result:
+                    source_result.status = 'completed'
+                    source_result.completed_at = timezone.now()
+                    source_result.articles_found = found
+                    source_result.articles_new = new
+                    source_result.articles_duplicate = dupes
+                    source_result.pages_crawled = pages
+                    source_result.error_count = errors
+                    source_result.save()
+                
+                # Update job progress
+                job.new_articles = total_new
+                job.duplicates = total_duplicates
+                job.pages_crawled = total_pages
+                job.errors = total_errors
+                job.save()
+                
+                # Log progress event
+                CrawlJobEvent.objects.create(
+                    crawl_job=job,
+                    event_type='source_complete',
+                    severity='info',
+                    message=f'Source {source.name}: {found} found, {new} new, {dupes} duplicates',
+                    details={
+                        'source_id': str(source.id),
+                        'source_name': source.name,
+                        'found': found,
+                        'new': new,
+                        'duplicates': dupes,
+                    }
+                )
+                
+            except Exception as e:
+                error_code, error_msg = _classify_error(e)
+                logger.error(f"Error crawling {source.name}: {error_msg}")
+                
+                total_errors += 1
+                job.errors = total_errors
+                job.save()
+                
+                # Update source result with error
+                if source_result:
+                    source_result.status = 'failed'
+                    source_result.completed_at = timezone.now()
+                    source_result.error_code = error_code
+                    source_result.error_message = error_msg
+                    source_result.save()
+                
+                # Log error event
+                CrawlJobEvent.objects.create(
+                    crawl_job=job,
+                    event_type='error',
+                    severity='error',
+                    message=f'Error crawling {source.name}: {error_msg}',
+                    details={
+                        'source_id': str(source.id),
+                        'error_code': error_code,
+                        'error_message': error_msg,
+                    }
+                )
+        
+        # Job completed successfully
+        job.status = 'completed'
+        job.completed_at = timezone.now()
+        job.new_articles = total_new
+        job.duplicates = total_duplicates
+        job.pages_crawled = total_pages
+        job.errors = total_errors
+        job.save()
+        
+        # Log completion event
+        CrawlJobEvent.objects.create(
+            crawl_job=job,
+            event_type='complete',
+            severity='info',
+            message=f'Job completed: {total_found} found, {total_new} new, {total_duplicates} duplicates',
+            details={
+                'total_found': total_found,
+                'total_new': total_new,
+                'total_duplicates': total_duplicates,
+                'total_errors': total_errors,
+                'total_pages': total_pages,
+            }
+        )
+        
+        logger.info(f"Job {job_id} completed: {total_found} found, {total_new} new")
+        
+        return {
+            'success': True,
+            'status': 'completed',
+            'total_found': total_found,
+            'total_new': total_new,
+            'total_duplicates': total_duplicates,
+            'total_errors': total_errors,
+            'total_pages': total_pages,
+        }
+        
+    except Exception as e:
+        error_code, error_msg = _classify_error(e)
+        logger.exception(f"Job {job_id} failed: {error_msg}")
+        
+        # Mark job as failed
+        job.status = 'failed'
+        job.completed_at = timezone.now()
+        job.error_message = error_msg
+        job.save()
+        
+        # Log failure event
+        CrawlJobEvent.objects.create(
+            crawl_job=job,
+            event_type='fail',
+            severity='error',
+            message=f'Job failed: {error_msg}',
+            details={
+                'error_code': error_code,
+                'error_message': error_msg,
+            }
+        )
+        
+        # Retry if appropriate
+        if error_code in ['NETWORK_TIMEOUT', 'NETWORK_REFUSED', 'HTTP_SERVER_ERROR']:
+            raise self.retry(exc=e, countdown=60)
+        
+        return {
+            'success': False,
+            'status': 'failed',
+            'error_code': error_code,
+            'error_message': error_msg,
+        }

@@ -63,7 +63,7 @@ from .pagination import (
 from .adapters import ModularCrawler
 
 
-def get_crawler(source, use_modular: bool = False, fetcher_type: str = None):
+def get_crawler(source, use_modular: bool = False, fetcher_type: str = None, config: dict = None):
     """
     Factory function to get the appropriate crawler for a source.
 
@@ -71,6 +71,7 @@ def get_crawler(source, use_modular: bool = False, fetcher_type: str = None):
         source: Source model instance
         use_modular: If True, use the new ModularCrawler instead of ScrapyCrawler
         fetcher_type: Override fetcher type ('http', 'browser', 'hybrid')
+        config: Optional config overrides to merge with source config
 
     Returns:
         Appropriate crawler instance
@@ -91,10 +92,10 @@ def get_crawler(source, use_modular: bool = False, fetcher_type: str = None):
     # Allow explicit modular crawler request
     if use_modular or crawler_type == 'modular':
         fetcher = _create_fetcher(effective_fetcher_type, source)
-        return ModularCrawler(source, fetcher=fetcher)
+        return ModularCrawler(source, fetcher=fetcher, config=config)
     
     if crawler_type == 'scrapy':
-        return ScrapyCrawler(source)
+        return ScrapyCrawler(source, config=config)
     elif crawler_type == 'playwright':
         if not PLAYWRIGHT_AVAILABLE:
             raise ImportError(
@@ -102,15 +103,15 @@ def get_crawler(source, use_modular: bool = False, fetcher_type: str = None):
                 "pip install playwright && playwright install chromium"
             )
         fetcher = _create_fetcher('browser', source)
-        return ModularCrawler(source, fetcher=fetcher)
+        return ModularCrawler(source, fetcher=fetcher, config=config)
     elif crawler_type == 'hybrid':
         fetcher = _create_fetcher('hybrid', source)
-        return ModularCrawler(source, fetcher=fetcher)
+        return ModularCrawler(source, fetcher=fetcher, config=config)
     elif crawler_type == 'selenium':
         raise NotImplementedError("Selenium crawler not yet implemented")
     else:
         # Default to Scrapy
-        return ScrapyCrawler(source)
+        return ScrapyCrawler(source, config=config)
 
 
 def _create_fetcher(fetcher_type: str, source) -> Fetcher:

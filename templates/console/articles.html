@@ -61,11 +61,11 @@
                         hx-get="{% url 'console:articles_list' %}"
                         hx-trigger="change"
                         hx-target="#articles-container"
-                        hx-include=".article-filter, [name='search']"
-                        hx-get="{% url 'console:sources_options' %}"
-                        hx-trigger="load once"
-                        hx-swap="innerHTML">
+                        hx-include=".article-filter, [name='search']">
                     <option value="">All sources</option>
+                    {% for source in sources %}
+                    <option value="{{ source.id }}">{{ source.name }}</option>
+                    {% endfor %}
                 </select>
             </div>
         </div>

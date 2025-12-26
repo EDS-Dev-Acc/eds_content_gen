@@ -1,0 +1,500 @@
+{% extends "base.html" %}
+
+{% block title %}{{ job.display_name }} - EMCIP{% endblock %}
+
+{% block page_title %}
+<div class="flex items-center space-x-3">
+    <a href="{% url 'console:control_center_list' %}" class="text-gray-400 hover:text-gray-600">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+    </a>
+    <span>{{ job.display_name }}</span>
+    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+        {% if job.status == 'running' %}bg-blue-100 text-blue-800
+        {% elif job.status == 'completed' %}bg-green-100 text-green-800
+        {% elif job.status == 'failed' %}bg-red-100 text-red-800
+        {% elif job.status == 'paused' %}bg-yellow-100 text-yellow-800
+        {% elif job.status == 'cancelled' %}bg-gray-100 text-gray-800
+        {% else %}bg-gray-100 text-gray-600{% endif %}">
+        {{ job.get_status_display }}
+    </span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="flex gap-6">
+    <!-- Left Column: Job Info & Source Breakdown -->
+    <div class="flex-1 space-y-6">
+        
+        <!-- Status Summary -->
+        <div class="bg-white shadow rounded-lg p-6">
+            <div class="grid grid-cols-4 gap-4">
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-gray-900">{{ job.pages_crawled }}</div>
+                    <div class="text-sm text-gray-500">Pages Crawled</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-green-600">{{ job.new_articles }}</div>
+                    <div class="text-sm text-gray-500">New Articles</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-yellow-600">{{ job.duplicates }}</div>
+                    <div class="text-sm text-gray-500">Duplicates</div>
+                </div>
+                <div class="text-center">
+                    <div class="text-2xl font-bold text-red-600">{{ job.errors }}</div>
+                    <div class="text-sm text-gray-500">Errors</div>
+                </div>
+            </div>
+            
+            {% if job.started_at %}
+            <div class="mt-4 pt-4 border-t border-gray-200 grid grid-cols-3 gap-4 text-sm">
+                <div>
+                    <span class="text-gray-500">Started:</span>
+                    <span class="ml-1 text-gray-900">{{ job.started_at|date:"M d, Y H:i" }}</span>
+                </div>
+                {% if job.completed_at %}
+                <div>
+                    <span class="text-gray-500">Completed:</span>
+                    <span class="ml-1 text-gray-900">{{ job.completed_at|date:"M d, Y H:i" }}</span>
+                </div>
+                <div>
+                    <span class="text-gray-500">Duration:</span>
+                    <span class="ml-1 text-gray-900">{{ job.duration|default:"-" }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Domain Breakdown -->
+        {% if source_results %}
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Source Breakdown</h3>
+            </div>
+            <div class="overflow-x-auto">
+                <table class="min-w-full divide-y divide-gray-200">
+                    <thead class="bg-gray-50">
+                        <tr>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Source</th>
+                            <th class="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Pages</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Articles</th>
+                            <th class="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Errors</th>
+                        </tr>
+                    </thead>
+                    <tbody class="bg-white divide-y divide-gray-200">
+                        {% for result in source_results %}
+                        <tr>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-sm font-medium text-gray-900">{{ result.source.name }}</div>
+                                <div class="text-xs text-gray-500">{{ result.source.domain }}</div>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                                    {% if result.status == 'running' %}bg-blue-100 text-blue-800
+                                    {% elif result.status == 'completed' %}bg-green-100 text-green-800
+                                    {% elif result.status == 'failed' %}bg-red-100 text-red-800
+                                    {% else %}bg-gray-100 text-gray-600{% endif %}">
+                                    {{ result.get_status_display }}
+                                </span>
+                            </td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ result.pages_crawled }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-900 text-right">{{ result.articles_new }}</td>
+                            <td class="px-6 py-4 whitespace-nowrap text-sm text-right">
+                                {% if result.errors_count > 0 %}
+                                <span class="text-red-600">{{ result.errors_count }}</span>
+                                {% else %}
+                                <span class="text-gray-400">0</span>
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Ad-hoc Seeds -->
+        {% if job_seeds %}
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-4 border-b border-gray-200">
+                <h3 class="text-lg font-medium text-gray-900">Ad-hoc Seeds</h3>
+            </div>
+            <div class="divide-y divide-gray-200">
+                {% for seed in job_seeds %}
+                <div class="px-4 py-3 flex items-center justify-between">
+                    <div>
+                        <div class="text-sm font-medium text-gray-900">{{ seed.label|default:seed.url }}</div>
+                        {% if seed.label %}
+                        <div class="text-xs text-gray-500 truncate max-w-md">{{ seed.url }}</div>
+                        {% endif %}
+                    </div>
+                    <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+                        {% if seed.status == 'running' %}bg-blue-100 text-blue-800
+                        {% elif seed.status == 'completed' %}bg-green-100 text-green-800
+                        {% elif seed.status == 'failed' %}bg-red-100 text-red-800
+                        {% else %}bg-gray-100 text-gray-600{% endif %}">
+                        {{ seed.get_status_display }}
+                    </span>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Event Log -->
+        <div class="bg-white shadow rounded-lg">
+            <div class="px-4 py-4 border-b border-gray-200 flex justify-between items-center">
+                <h3 class="text-lg font-medium text-gray-900">Event Log</h3>
+                <div class="flex space-x-2">
+                    <select id="severity-filter" 
+                            hx-get="{% url 'console:control_center_events' job_id=job.id %}"
+                            hx-trigger="change"
+                            hx-target="#events-list"
+                            hx-include="#event-type-filter"
+                            name="severity"
+                            class="text-sm rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500">
+                        <option value="">All Severities</option>
+                        <option value="error">Errors</option>
+                        <option value="warning">Warnings</option>
+                        <option value="info">Info</option>
+                    </select>
+                </div>
+            </div>
+            <div id="events-list" class="divide-y divide-gray-200 max-h-96 overflow-y-auto">
+                {% include "console/control_center/partials/events_list.html" %}
+            </div>
+        </div>
+
+        <!-- Configuration Summary -->
+        <div class="bg-white shadow rounded-lg" x-data="{ open: false }">
+            <button type="button" @click="open = !open" 
+                    class="w-full px-4 py-4 flex justify-between items-center">
+                <h3 class="text-lg font-medium text-gray-900">Configuration</h3>
+                <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                </svg>
+            </button>
+            <div x-show="open" class="px-4 pb-4 space-y-4 border-t border-gray-200 pt-4">
+                <div class="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                        <span class="text-gray-500">Run Type:</span>
+                        <span class="ml-1 text-gray-900">{{ job.get_run_type_display }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Strategy:</span>
+                        <span class="ml-1 text-gray-900">{{ job.get_crawl_strategy_display }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Max Pages (Run):</span>
+                        <span class="ml-1 text-gray-900">{{ job.max_pages_run }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Max Pages (Domain):</span>
+                        <span class="ml-1 text-gray-900">{{ job.max_pages_domain }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Crawl Depth:</span>
+                        <span class="ml-1 text-gray-900">{{ job.crawl_depth }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Fetch Mode:</span>
+                        <span class="ml-1 text-gray-900">{{ job.get_fetch_mode_display }}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Respect robots.txt:</span>
+                        <span class="ml-1 text-gray-900">{% if job.respect_robots %}Yes{% else %}No{% endif %}</span>
+                    </div>
+                    <div>
+                        <span class="text-gray-500">Concurrency:</span>
+                        <span class="ml-1 text-gray-900">{{ job.max_concurrent_global }} / {{ job.max_concurrent_domain }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Right Column: Controls & Live Monitor -->
+    <div class="w-80 flex-shrink-0">
+        <div class="sticky top-4 space-y-4">
+            
+            <!-- Controls -->
+            <div id="job-controls" class="bg-white shadow rounded-lg p-4">
+                {% include "console/control_center/partials/job_controls.html" %}
+            </div>
+
+            <!-- Live Monitor (for active jobs) -->
+            {% if job.is_active %}
+            <div id="live-monitor" class="bg-white shadow rounded-lg p-4">
+                <div id="sse-monitor" 
+                     x-data="jobMonitor()"
+                     x-init="connect('{% url 'console:control_center_sse' job_id=job.id %}')">
+                    
+                    <!-- Connection Status -->
+                    <div class="mb-3 flex items-center justify-between">
+                        <span class="text-xs text-gray-500">Live Updates</span>
+                        <div class="flex items-center gap-3">
+                            <!-- Celery Worker Status -->
+                            <div x-data="celeryStatus()" x-init="check()" class="flex items-center">
+                                <template x-if="status === 'healthy'">
+                                    <span class="flex items-center text-xs text-green-600" title="Celery workers active">
+                                        <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M11.3 1.046A1 1 0 0112 2v5h4a1 1 0 01.82 1.573l-7 10A1 1 0 018 18v-5H4a1 1 0 01-.82-1.573l7-10a1 1 0 011.12-.38z" clip-rule="evenodd"/>
+                                        </svg>
+                                        <span x-text="workers + ' worker' + (workers > 1 ? 's' : '')"></span>
+                                    </span>
+                                </template>
+                                <template x-if="status === 'unhealthy'">
+                                    <span class="flex items-center text-xs text-red-600" :title="message">
+                                        <svg class="h-3 w-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7 4a1 1 0 11-2 0 1 1 0 012 0zm-1-9a1 1 0 00-1 1v4a1 1 0 102 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+                                        </svg>
+                                        No Workers
+                                    </span>
+                                </template>
+                                <template x-if="status === 'checking'">
+                                    <span class="flex items-center text-xs text-gray-400">
+                                        <svg class="animate-spin h-3 w-3 mr-1" fill="none" viewBox="0 0 24 24">
+                                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                                        </svg>
+                                        Checking...
+                                    </span>
+                                </template>
+                            </div>
+                            
+                            <!-- SSE Connection Status -->
+                            <span x-show="connected" class="flex items-center text-xs text-green-600">
+                                <span class="h-2 w-2 rounded-full bg-green-500 mr-1 animate-pulse"></span>
+                                Connected
+                            </span>
+                            <span x-show="!connected" class="flex items-center text-xs text-red-600">
+                                <span class="h-2 w-2 rounded-full bg-red-500 mr-1"></span>
+                                Disconnected
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <!-- Stats Grid -->
+                    <div class="grid grid-cols-2 gap-2 mb-3">
+                        <div class="text-center p-2 bg-gray-50 rounded">
+                            <div class="text-lg font-bold text-gray-900" x-text="stats.pages_crawled">{{ job.pages_crawled }}</div>
+                            <div class="text-xs text-gray-500">Pages</div>
+                        </div>
+                        <div class="text-center p-2 bg-gray-50 rounded">
+                            <div class="text-lg font-bold text-green-600" x-text="stats.new_articles">{{ job.new_articles }}</div>
+                            <div class="text-xs text-gray-500">New</div>
+                        </div>
+                        <div class="text-center p-2 bg-gray-50 rounded">
+                            <div class="text-lg font-bold text-yellow-600" x-text="stats.duplicates">{{ job.duplicates }}</div>
+                            <div class="text-xs text-gray-500">Dupes</div>
+                        </div>
+                        <div class="text-center p-2 bg-gray-50 rounded">
+                            <div class="text-lg font-bold text-red-600" x-text="stats.errors">{{ job.errors }}</div>
+                            <div class="text-xs text-gray-500">Errors</div>
+                        </div>
+                    </div>
+                    
+                    <!-- Progress Bar -->
+                    <div class="mb-3">
+                        <div class="flex justify-between text-xs text-gray-500 mb-1">
+                            <span>Progress</span>
+                            <span x-text="stats.pages_crawled + ' / {{ job.max_pages_run }}'">{{ job.pages_crawled }} / {{ job.max_pages_run }}</span>
+                        </div>
+                        <div class="w-full bg-gray-200 rounded-full h-2">
+                            <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500" 
+                                 :style="'width: ' + stats.progress_pct + '%'"></div>
+                        </div>
+                    </div>
+                    
+                    <!-- Rate & Time -->
+                    <div class="text-sm space-y-1 mb-3">
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Rate</span>
+                            <span class="text-gray-900 font-mono" x-text="stats.rate + ' pages/s'">-</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-500">Elapsed</span>
+                            <span class="text-gray-900 font-mono" x-text="formatTime(stats.elapsed_seconds)">-</span>
+                        </div>
+                        <div class="flex justify-between" x-show="stats.remaining_seconds">
+                            <span class="text-gray-500">Remaining</span>
+                            <span class="text-gray-900 font-mono" x-text="'~' + formatTime(stats.remaining_seconds)">-</span>
+                        </div>
+                    </div>
+                    
+                    <!-- Status Indicator -->
+                    <div x-show="stats.status === 'running'" class="flex items-center justify-center space-x-2 text-blue-600 text-sm">
+                        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+                            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+                        </svg>
+                        <span>Running...</span>
+                    </div>
+                    <div x-show="stats.status === 'paused'" class="flex items-center justify-center space-x-2 text-yellow-600 text-sm">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>Paused</span>
+                    </div>
+                    <div x-show="stats.status === 'completed'" class="flex items-center justify-center space-x-2 text-green-600 text-sm">
+                        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                        </svg>
+                        <span>Completed</span>
+                    </div>
+                    
+                    <!-- Recent Events -->
+                    <div class="mt-4 border-t pt-3">
+                        <h4 class="text-xs font-medium text-gray-700 mb-2">Recent Events</h4>
+                        <div class="space-y-1 max-h-40 overflow-y-auto">
+                            <template x-for="event in events.slice(0, 10)" :key="event.id">
+                                <div class="text-xs flex items-start gap-2 py-1">
+                                    <span :class="{
+                                        'text-red-500': event.severity === 'error',
+                                        'text-yellow-500': event.severity === 'warning',
+                                        'text-blue-500': event.severity === 'info'
+                                    }">●</span>
+                                    <span class="text-gray-600 flex-1 truncate" x-text="event.message"></span>
+                                </div>
+                            </template>
+                            <div x-show="events.length === 0" class="text-xs text-gray-400 text-center py-2">
+                                No events yet
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+<script>
+function jobMonitor() {
+    return {
+        connected: false,
+        eventSource: null,
+        stats: {
+            pages_crawled: {{ job.pages_crawled|default:0 }},
+            new_articles: {{ job.new_articles|default:0 }},
+            duplicates: {{ job.duplicates|default:0 }},
+            errors: {{ job.errors|default:0 }},
+            rate: 0,
+            elapsed_seconds: 0,
+            remaining_seconds: null,
+            progress_pct: 0,
+            status: '{{ job.status }}'
+        },
+        events: [],
+        
+        connect(url) {
+            // Close existing connection if any
+            if (this.eventSource) {
+                this.eventSource.close();
+            }
+            
+            this.eventSource = new EventSource(url);
+            
+            this.eventSource.onopen = () => {
+                console.log('SSE connection opened');
+                this.connected = true;
+            };
+            
+            this.eventSource.onerror = (e) => {
+                console.log('SSE error:', e);
+                this.connected = false;
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+                // Try to reconnect after 5 seconds
+                setTimeout(() => this.connect(url), 5000);
+            };
+            
+            this.eventSource.addEventListener('connected', (e) => {
+                console.log('SSE connected event received');
+                const data = JSON.parse(e.data);
+                this.stats = { ...this.stats, ...data };
+                this.connected = true;
+            });
+            
+            this.eventSource.addEventListener('stats', (e) => {
+                const data = JSON.parse(e.data);
+                this.stats = { ...this.stats, ...data };
+            });
+            
+            this.eventSource.addEventListener('log', (e) => {
+                const data = JSON.parse(e.data);
+                this.events.unshift(data);
+                // Keep only last 50 events
+                if (this.events.length > 50) {
+                    this.events = this.events.slice(0, 50);
+                }
+            });
+            
+            this.eventSource.addEventListener('complete', (e) => {
+                const data = JSON.parse(e.data);
+                this.stats.status = data.status;
+                this.connected = false;
+                this.eventSource.close();
+                // Refresh page to show final state
+                setTimeout(() => window.location.reload(), 1000);
+            });
+            
+            this.eventSource.addEventListener('heartbeat', (e) => {
+                // Just confirms connection is alive
+                console.log('SSE heartbeat received');
+            });
+        },
+        
+        formatTime(seconds) {
+            if (!seconds) return '-';
+            const h = Math.floor(seconds / 3600);
+            const m = Math.floor((seconds % 3600) / 60);
+            const s = seconds % 60;
+            if (h > 0) return `${h}h ${m}m`;
+            if (m > 0) return `${m}m ${s}s`;
+            return `${s}s`;
+        },
+        
+        destroy() {
+            if (this.eventSource) {
+                this.eventSource.close();
+            }
+        }
+    };
+}
+
+function celeryStatus() {
+    return {
+        status: 'checking',
+        workers: 0,
+        message: '',
+        
+        async check() {
+            try {
+                const response = await fetch('{% url "console:celery_status" %}');
+                const data = await response.json();
+                this.status = data.status;
+                this.workers = data.workers;
+                this.message = data.message;
+            } catch (e) {
+                this.status = 'unhealthy';
+                this.message = 'Failed to check Celery status';
+            }
+            
+            // Re-check every 30 seconds
+            setTimeout(() => this.check(), 30000);
+        }
+    };
+}
+</script>
+{% endblock %}

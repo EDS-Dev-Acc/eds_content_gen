@@ -3,7 +3,7 @@ Admin interface for Source management.
 """
 
 from django.contrib import admin
-from django.utils.html import format_html
+from django.utils.html import format_html, mark_safe
 from .models import Source
 
 
@@ -144,9 +144,9 @@ class SourceAdmin(admin.ModelAdmin):
         else:
             color = 'red'
         return format_html(
-            '<span style="color: {};">{:.1f}%</span>',
+            '<span style="color: {};">{}</span>',
             color,
-            ratio
+            f'{float(ratio):.1f}%'
         )
     usage_ratio_display.short_description = 'Usage Ratio'
 
@@ -181,7 +181,7 @@ class SourceAdmin(admin.ModelAdmin):
     def health_status(self, obj):
         """Display source health status."""
         if obj.is_healthy:
-            return format_html(
+            return mark_safe(
                 '<span style="color: green; font-weight: bold;">✓ Healthy</span>'
             )
         else:
@@ -192,7 +192,33 @@ class SourceAdmin(admin.ModelAdmin):
     health_status.short_description = 'Health Status'
 
     # Actions
-    actions = ['reset_error_count', 'mark_inactive', 'mark_active']
+    actions = ['reset_error_count', 'mark_inactive', 'mark_active', 'start_crawl']
+
+    def start_crawl(self, request, queryset):
+        """Start a crawl for selected sources."""
+        from .tasks import crawl_source
+        from .models import CrawlJob
+        
+        started = 0
+        for source in queryset.filter(status='active'):
+            try:
+                # Create CrawlJob
+                job = CrawlJob.objects.create(
+                    source=source,
+                    status='pending',
+                    triggered_by=request.user,
+                )
+                # Trigger async task
+                crawl_source.delay(str(source.id), crawl_job_id=str(job.id))
+                started += 1
+            except Exception as e:
+                self.message_user(request, f'Error starting crawl for {source.name}: {e}', level='error')
+        
+        if started:
+            self.message_user(request, f'Started crawl for {started} source(s). Check Celery worker logs for progress.')
+        else:
+            self.message_user(request, 'No active sources selected.', level='warning')
+    start_crawl.short_description = 'Start crawl (requires Celery)'
 
     def reset_error_count(self, request, queryset):
         """Reset crawl error count for selected sources."""

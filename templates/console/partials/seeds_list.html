@@ -1,20 +1,20 @@
 <!-- Seeds row partial for HTMX updates -->
 {% for seed in seeds %}
-<tr>
+<tr id="seed-{{ seed.id }}">
     <td class="px-6 py-4 whitespace-nowrap">
         <input type="checkbox" name="seed_ids" value="{{ seed.id }}" class="seed-checkbox h-4 w-4 rounded border-gray-300 text-indigo-600">
     </td>
     <td class="px-6 py-4">
-        <div class="text-sm font-medium text-gray-900">{{ seed.name|default:seed.url|truncatechars:50 }}</div>
+        <div class="text-sm font-medium text-gray-900">{{ seed.domain|default:seed.url|truncatechars:50 }}</div>
         <div class="text-sm text-gray-500 truncate max-w-md">{{ seed.url }}</div>
     </td>
     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-        {{ seed.category.name|default:"Uncategorized" }}
+        {{ seed.seed_type|default:"unknown" }}
     </td>
     <td class="px-6 py-4 whitespace-nowrap">
         <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
                      {% if seed.status == 'promoted' %}bg-green-100 text-green-800
-                     {% elif seed.status == 'validated' %}bg-blue-100 text-blue-800
+                     {% elif seed.status == 'valid' %}bg-blue-100 text-blue-800
                      {% elif seed.status == 'rejected' %}bg-red-100 text-red-800
                      {% else %}bg-yellow-100 text-yellow-800{% endif %}">
             {{ seed.status|title }}
@@ -26,21 +26,21 @@
     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
         {% if seed.status == 'pending' %}
         <button hx-post="{% url 'console:seed_validate' seed.id %}"
-                hx-target="closest tr"
+                hx-target="#seed-{{ seed.id }}"
                 hx-swap="outerHTML"
                 class="text-blue-600 hover:text-blue-900 mr-2">
             Validate
         </button>
         {% endif %}
-        {% if seed.status in 'pending,validated' %}
+        {% if seed.status == 'pending' or seed.status == 'valid' %}
         <button hx-post="{% url 'console:seed_promote' seed.id %}"
-                hx-target="closest tr"
+                hx-target="#seed-{{ seed.id }}"
                 hx-swap="outerHTML"
                 class="text-green-600 hover:text-green-900 mr-2">
             Promote
         </button>
         <button hx-post="{% url 'console:seed_reject' seed.id %}"
-                hx-target="closest tr"
+                hx-target="#seed-{{ seed.id }}"
                 hx-swap="outerHTML"
                 class="text-red-600 hover:text-red-900">
             Reject
@@ -53,7 +53,7 @@
 {% empty %}
 <tr>
     <td colspan="6" class="px-6 py-4 text-center text-gray-500">
-        No seeds found. <a href="#" onclick="openModal('add-seed-modal')" class="text-indigo-600 hover:text-indigo-500">Add some?</a>
+        No seeds found. Import seeds using the Admin interface.
     </td>
 </tr>
 {% endfor %}

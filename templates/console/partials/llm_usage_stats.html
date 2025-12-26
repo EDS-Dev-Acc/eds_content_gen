@@ -1,3 +1,4 @@
+{% load humanize %}
 <!-- LLM usage stats partial -->
 <div class="bg-white shadow rounded-lg">
     <div class="px-4 py-5 sm:p-6">
@@ -45,17 +46,17 @@
             </div>
         </div>
 
-        <!-- Usage by Task Type -->
-        {% if usage.by_task %}
+        <!-- Usage by Prompt Type -->
+        {% if usage.by_prompt %}
         <div class="mt-6">
-            <h4 class="text-sm font-medium text-gray-700 mb-2">By Task Type</h4>
+            <h4 class="text-sm font-medium text-gray-700 mb-2">By Prompt Type</h4>
             <div class="space-y-2">
-                {% for task in usage.by_task %}
+                {% for item in usage.by_prompt %}
                 <div class="flex items-center justify-between">
-                    <span class="text-sm text-gray-600">{{ task.task_type }}</span>
+                    <span class="text-sm text-gray-600">{{ item.prompt_name|default:"Unknown" }}</span>
                     <div class="flex items-center space-x-4">
-                        <span class="text-sm text-gray-500">{{ task.count }} requests</span>
-                        <span class="text-sm font-medium text-gray-900">${{ task.cost|floatformat:2 }}</span>
+                        <span class="text-sm text-gray-500">{{ item.count }} requests</span>
+                        <span class="text-sm font-medium text-gray-900">${{ item.cost|floatformat:2 }}</span>
                     </div>
                 </div>
                 {% endfor %}

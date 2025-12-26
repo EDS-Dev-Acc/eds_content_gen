@@ -1,0 +1,186 @@
+{% for job in jobs %}
+<tr data-job-id="{{ job.id }}" class="hover:bg-gray-50">
+    <td class="px-4 py-4 whitespace-nowrap">
+        <input type="checkbox" 
+               :checked="selectedJobs.includes('{{ job.id }}')"
+               @change="selectedJobs.includes('{{ job.id }}') ? selectedJobs = selectedJobs.filter(id => id !== '{{ job.id }}') : selectedJobs.push('{{ job.id }}')"
+               class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap">
+        <a href="{% url 'console:control_center_detail' job_id=job.id %}" class="text-indigo-600 hover:text-indigo-900">
+            <div class="text-sm font-medium">{{ job.display_name }}</div>
+        </a>
+        {% if job.description %}
+        <div class="text-xs text-gray-500 truncate max-w-xs">{{ job.description }}</div>
+        {% endif %}
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap">
+        <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium
+            {% if job.run_type == 'one_off' %}bg-gray-100 text-gray-700
+            {% elif job.run_type == 'scheduled' %}bg-blue-100 text-blue-700
+            {% elif job.run_type == 'backfill' %}bg-purple-100 text-purple-700
+            {% elif job.run_type == 'monitoring' %}bg-green-100 text-green-700
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            {{ job.get_run_type_display }}
+        </span>
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap">
+        <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium
+            {% if job.status == 'running' %}bg-blue-100 text-blue-800
+            {% elif job.status == 'completed' %}bg-green-100 text-green-800
+            {% elif job.status == 'failed' %}bg-red-100 text-red-800
+            {% elif job.status == 'paused' %}bg-yellow-100 text-yellow-800
+            {% elif job.status == 'stopped' %}bg-gray-100 text-gray-800
+            {% elif job.status == 'draft' %}bg-purple-100 text-purple-800
+            {% elif job.status == 'queued' %}bg-orange-100 text-orange-800
+            {% else %}bg-gray-100 text-gray-600{% endif %}">
+            {% if job.status == 'running' %}
+            <svg class="animate-spin -ml-0.5 mr-1 h-3 w-3" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            {% endif %}
+            {{ job.get_status_display }}
+        </span>
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap">
+        {% if job.max_pages_run and job.status in 'running,paused' %}
+        <div class="w-24">
+            <div class="flex justify-between text-xs text-gray-500 mb-0.5">
+                <span>{{ job.pages_crawled }}</span>
+                <span>{{ job.max_pages_run }}</span>
+            </div>
+            <div class="w-full bg-gray-200 rounded-full h-1.5">
+                {% widthratio job.pages_crawled job.max_pages_run 100 as pct %}
+                <div class="bg-indigo-600 h-1.5 rounded-full" style="width: {{ pct }}%"></div>
+            </div>
+        </div>
+        {% elif job.status == 'completed' %}
+        <span class="text-xs text-green-600">✓ Done</span>
+        {% elif job.status == 'draft' %}
+        <span class="text-xs text-gray-400">–</span>
+        {% else %}
+        <span class="text-xs text-gray-400">–</span>
+        {% endif %}
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-500">
+        {% if job.started_at %}
+            {{ job.started_at|date:"M d, H:i" }}
+        {% else %}
+            <span class="text-gray-400">–</span>
+        {% endif %}
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap text-sm text-gray-900 text-right font-mono">
+        {{ job.pages_crawled|default:0 }}
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap text-sm text-right font-mono">
+        <span class="text-green-600">{{ job.new_articles|default:0 }}</span>
+        {% if job.errors > 0 %}
+        <span class="text-red-500 ml-1">({{ job.errors }} err)</span>
+        {% endif %}
+    </td>
+    <td class="px-4 py-4 whitespace-nowrap text-right text-sm font-medium">
+        <div class="flex justify-end space-x-1">
+            {% if job.status == 'draft' %}
+            <a href="{% url 'console:control_center_edit' job_id=job.id %}" 
+               class="p-1 text-indigo-600 hover:text-indigo-900 hover:bg-indigo-50 rounded" title="Edit">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M11 5H6a2 2 0 00-2 2v11a2 2 0 002 2h11a2 2 0 002-2v-5m-1.414-9.414a2 2 0 112.828 2.828L11.828 15H9v-2.828l8.586-8.586z"/>
+                </svg>
+            </a>
+            {% endif %}
+            {% if job.status == 'running' %}
+            <form method="post" action="{% url 'console:control_center_control' job_id=job.id action='pause' %}" class="inline"
+                  hx-post="{% url 'console:control_center_control' job_id=job.id action='pause' %}"
+                  hx-trigger="submit"
+                  hx-swap="none"
+                  hx-on::after-request="htmx.trigger(document.body, 'jobsUpdated')">
+                {% csrf_token %}
+                <button type="submit" class="p-1 text-yellow-600 hover:text-yellow-900 hover:bg-yellow-50 rounded" title="Pause">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </button>
+            </form>
+            {% elif job.status == 'paused' %}
+            <form method="post" action="{% url 'console:control_center_control' job_id=job.id action='resume' %}" class="inline"
+                  hx-post="{% url 'console:control_center_control' job_id=job.id action='resume' %}"
+                  hx-trigger="submit"
+                  hx-swap="none"
+                  hx-on::after-request="htmx.trigger(document.body, 'jobsUpdated')">
+                {% csrf_token %}
+                <button type="submit" class="p-1 text-green-600 hover:text-green-900 hover:bg-green-50 rounded" title="Resume">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                    </svg>
+                </button>
+            </form>
+            {% endif %}
+            <a href="{% url 'console:control_center_detail' job_id=job.id %}" 
+               class="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded" title="View Details">
+                <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                </svg>
+            </a>
+            <form method="post" action="{% url 'console:control_center_clone' job_id=job.id %}" class="inline">
+                {% csrf_token %}
+                <button type="submit" class="p-1 text-gray-600 hover:text-gray-900 hover:bg-gray-100 rounded" title="Clone">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                </button>
+            </form>
+        </div>
+    </td>
+</tr>
+{% empty %}
+<tr>
+    <td colspan="9" class="px-6 py-8 text-center text-gray-500">
+        <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9.75 17L9 20l-1 1h8l-1-1-.75-3M3 13h18M5 17h14a2 2 0 002-2V5a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"/>
+        </svg>
+        <h3 class="mt-2 text-sm font-medium text-gray-900">No crawl runs</h3>
+        <p class="mt-1 text-sm text-gray-500">Get started by creating a new run.</p>
+        <div class="mt-6">
+            <a href="{% url 'console:control_center_new' %}" 
+               class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+                <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                </svg>
+                New Run
+            </a>
+        </div>
+    </td>
+</tr>
+{% endfor %}
+
+{% if jobs.has_other_pages %}
+<tr>
+    <td colspan="7" class="px-6 py-4">
+        <nav class="flex items-center justify-between">
+            <div class="text-sm text-gray-500">
+                Showing {{ jobs.start_index }} – {{ jobs.end_index }} of {{ jobs.paginator.count }}
+            </div>
+            <div class="flex space-x-2">
+                {% if jobs.has_previous %}
+                <button hx-get="{% url 'console:control_center_jobs' %}?page={{ jobs.previous_page_number }}"
+                        hx-target="#jobs-table-body"
+                        hx-include="[name='search'], [name='status'], [name='run_type']"
+                        class="px-3 py-1 border rounded text-sm hover:bg-gray-50">
+                    Previous
+                </button>
+                {% endif %}
+                {% if jobs.has_next %}
+                <button hx-get="{% url 'console:control_center_jobs' %}?page={{ jobs.next_page_number }}"
+                        hx-target="#jobs-table-body"
+                        hx-include="[name='search'], [name='status'], [name='run_type']"
+                        class="px-3 py-1 border rounded text-sm hover:bg-gray-50">
+                    Next
+                </button>
+                {% endif %}
+            </div>
+        </nav>
+    </td>
+</tr>
+{% endif %}

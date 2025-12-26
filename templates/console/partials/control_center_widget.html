@@ -1,0 +1,129 @@
+<!-- Control Center Widget - Shows active/running crawl jobs -->
+{% if active_jobs %}
+<div class="divide-y divide-gray-200">
+    {% for job in active_jobs %}
+    <div class="p-4 hover:bg-gray-50">
+        <div class="flex items-center justify-between">
+            <div class="flex-1 min-w-0">
+                <div class="flex items-center space-x-2">
+                    <!-- Status indicator -->
+                    {% if job.status == 'running' %}
+                    <span class="flex h-3 w-3">
+                        <span class="animate-ping absolute inline-flex h-3 w-3 rounded-full bg-green-400 opacity-75"></span>
+                        <span class="relative inline-flex rounded-full h-3 w-3 bg-green-500"></span>
+                    </span>
+                    {% elif job.status == 'queued' %}
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-yellow-400"></span>
+                    {% elif job.status == 'paused' %}
+                    <span class="relative inline-flex rounded-full h-3 w-3 bg-orange-400"></span>
+                    {% endif %}
+                    
+                    <a href="{% url 'console:control_center_detail' job.id %}" 
+                       class="text-sm font-medium text-gray-900 hover:text-indigo-600 truncate">
+                        {{ job.name }}
+                    </a>
+                    
+                    <span class="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium 
+                                 {% if job.status == 'running' %}bg-green-100 text-green-800
+                                 {% elif job.status == 'queued' %}bg-yellow-100 text-yellow-800
+                                 {% elif job.status == 'paused' %}bg-orange-100 text-orange-800
+                                 {% endif %}">
+                        {{ job.status|title }}
+                    </span>
+                </div>
+                
+                <div class="mt-1 flex items-center text-xs text-gray-500 space-x-3">
+                    <span>{{ job.get_run_type_display }}</span>
+                    {% if job.status == 'running' and job.started_at %}
+                    <span>Started {{ job.started_at|timesince }} ago</span>
+                    {% elif job.status == 'queued' %}
+                    <span>Waiting in queue</span>
+                    {% elif job.status == 'paused' %}
+                    <span>Paused</span>
+                    {% endif %}
+                </div>
+                
+                <!-- Progress bar for running jobs -->
+                {% if job.status == 'running' %}
+                <div class="mt-2">
+                    <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+                        <span>{{ job.items_scraped|default:0 }} items</span>
+                        {% if job.error_count %}
+                        <span class="text-red-500">{{ job.error_count }} errors</span>
+                        {% endif %}
+                    </div>
+                    <div class="w-full bg-gray-200 rounded-full h-1.5">
+                        {% with progress=job.items_scraped|default:0 %}
+                        <div class="bg-indigo-600 h-1.5 rounded-full transition-all duration-300" 
+                             style="width: {% if job.max_items and progress %}{{ progress|floatformat:0 }}%{% else %}0%{% endif %}"></div>
+                        {% endwith %}
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Quick actions -->
+            <div class="ml-4 flex-shrink-0 flex items-center space-x-2">
+                {% if job.status == 'running' %}
+                <button hx-post="{% url 'console:control_center_control' job.id 'pause' %}"
+                        hx-target="#control-center-widget"
+                        hx-swap="innerHTML"
+                        class="p-1.5 text-gray-400 hover:text-orange-500 hover:bg-orange-50 rounded"
+                        title="Pause">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </button>
+                {% elif job.status == 'paused' %}
+                <button hx-post="{% url 'console:control_center_control' job.id 'resume' %}"
+                        hx-target="#control-center-widget"
+                        hx-swap="innerHTML"
+                        class="p-1.5 text-gray-400 hover:text-green-500 hover:bg-green-50 rounded"
+                        title="Resume">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                    </svg>
+                </button>
+                {% endif %}
+                
+                <a href="{% url 'console:control_center_detail' job.id %}" 
+                   class="p-1.5 text-gray-400 hover:text-indigo-500 hover:bg-indigo-50 rounded"
+                   title="View Details">
+                    <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                    </svg>
+                </a>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<!-- Footer with link to Control Center -->
+<div class="px-4 py-3 bg-gray-50 border-t border-gray-200">
+    <a href="{% url 'console:control_center_list' %}" 
+       class="text-sm text-indigo-600 hover:text-indigo-500 font-medium">
+        View all jobs →
+    </a>
+</div>
+
+{% else %}
+<div class="p-8 text-center">
+    <svg class="mx-auto h-12 w-12 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+    </svg>
+    <h3 class="mt-2 text-sm font-medium text-gray-900">No active crawls</h3>
+    <p class="mt-1 text-sm text-gray-500">All crawl jobs have completed or are in draft state.</p>
+    <div class="mt-4">
+        <a href="{% url 'console:control_center_new' %}" 
+           class="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-indigo-600 hover:bg-indigo-700">
+            <svg class="-ml-1 mr-2 h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            Create New Job
+        </a>
+    </div>
+</div>
+{% endif %}

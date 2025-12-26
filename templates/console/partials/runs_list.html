@@ -2,10 +2,10 @@
 {% for run in runs %}
 <tr>
     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-        #{{ run.id }}
+        {{ run.id|truncatechars:8 }}
     </td>
     <td class="px-6 py-4 whitespace-nowrap">
-        <div class="text-sm font-medium text-gray-900">{{ run.source.name }}</div>
+        <div class="text-sm font-medium text-gray-900">{{ run.source.name|default:"Multi-source" }}</div>
     </td>
     <td class="px-6 py-4 whitespace-nowrap">
         <span class="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
@@ -30,18 +30,15 @@
         {% endif %}
     </td>
     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-        {{ run.articles_found|default:0 }}
+        {{ run.new_articles|default:0 }}
     </td>
     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
         {% if run.status == 'running' %}
-        <button hx-post="{% url 'console:run_cancel' run.id %}"
-                hx-target="closest tr"
-                hx-swap="outerHTML"
-                class="text-red-600 hover:text-red-900">
-            Cancel
-        </button>
+        <span class="text-blue-600">In progress...</span>
+        {% elif run.status == 'failed' %}
+        <span class="text-red-600" title="{{ run.error_message }}">Error</span>
         {% else %}
-        <a href="{% url 'console:run_detail' run.id %}" class="text-indigo-600 hover:text-indigo-900">View</a>
+        <span class="text-gray-400">{{ run.status|title }}</span>
         {% endif %}
     </td>
 </tr>

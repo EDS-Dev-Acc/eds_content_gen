@@ -17,15 +17,20 @@ class BaseCrawler(ABC):
     Abstract base class for all crawlers.
     """
 
-    def __init__(self, source):
+    def __init__(self, source, config: dict = None):
         """
         Initialize crawler with a source.
 
         Args:
             source: Source model instance
+            config: Optional config overrides (merged with source.crawler_config)
         """
         self.source = source
-        self.config = source.crawler_config or {}
+        # Start with source's crawler_config, then merge any overrides
+        base_config = source.crawler_config or {}
+        if config:
+            base_config = {**base_config, **config}
+        self.config = base_config
         self.max_pages = self.config.get('max_pages', 3)
         self.delay = self.config.get('delay', 2)  # seconds between requests
         self.user_agent = self.config.get(

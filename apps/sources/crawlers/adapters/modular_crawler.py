@@ -39,8 +39,9 @@ class ModularCrawler(BaseCrawler):
         fetcher: Optional[Fetcher] = None,
         link_extractor: Optional[LinkExtractor] = None,
         paginator: Optional[Paginator] = None,
+        config: dict = None,
     ):
-        super().__init__(source)
+        super().__init__(source, config=config)
         
         # Load domain-specific rules
         self.rules = get_rules_for_domain(source.domain)

@@ -126,9 +126,35 @@
     </div>
 
     <!-- Recent activity sections -->
-    <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        <!-- Control Center Widget -->
+        <div class="bg-white shadow rounded-lg lg:col-span-1">
+            <div class="px-4 py-5 sm:px-6 border-b border-gray-200 flex items-center justify-between">
+                <div class="flex items-center">
+                    <svg class="h-5 w-5 text-indigo-500 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+                    </svg>
+                    <h3 class="text-lg leading-6 font-medium text-gray-900">Control Center</h3>
+                </div>
+                <span class="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800"
+                      hx-get="{% url 'console:stat_runs_today' %}"
+                      hx-trigger="load, every 30s"
+                      hx-swap="innerHTML">
+                    <span class="animate-pulse">...</span>
+                </span>
+            </div>
+            <div id="control-center-widget" 
+                 hx-get="{% url 'console:control_center_widget' %}" 
+                 hx-trigger="load, every 10s"
+                 hx-swap="innerHTML">
+                <div class="p-4 text-center text-gray-500">
+                    <span class="animate-pulse">Loading...</span>
+                </div>
+            </div>
+        </div>
+
         <!-- Recent Runs -->
-        <div class="bg-white shadow rounded-lg">
+        <div class="bg-white shadow rounded-lg lg:col-span-1">
             <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
                 <h3 class="text-lg leading-6 font-medium text-gray-900">Recent Runs</h3>
             </div>
@@ -143,7 +169,7 @@
         </div>
 
         <!-- Recent Articles -->
-        <div class="bg-white shadow rounded-lg">
+        <div class="bg-white shadow rounded-lg lg:col-span-1">
             <div class="px-4 py-5 sm:px-6 border-b border-gray-200">
                 <h3 class="text-lg leading-6 font-medium text-gray-900">Recent Articles</h3>
             </div>

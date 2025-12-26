@@ -22,8 +22,8 @@
                                  {% else %}bg-yellow-100 text-yellow-800{% endif %}">
                         {{ run.status|title }}
                     </span>
-                    {% if run.articles_found %}
-                    <span class="text-xs text-gray-500">{{ run.articles_found }} found</span>
+                    {% if run.new_articles %}
+                    <span class="text-xs text-gray-500">{{ run.new_articles }} new</span>
                     {% endif %}
                 </div>
             </div>

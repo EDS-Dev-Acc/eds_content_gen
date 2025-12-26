@@ -1,0 +1,71 @@
+<!-- Live stats -->
+<div class="space-y-4">
+    <div class="grid grid-cols-2 gap-2">
+        <div class="text-center p-2 bg-gray-50 rounded">
+            <div class="text-lg font-bold text-gray-900">{{ stats.pages_crawled }}</div>
+            <div class="text-xs text-gray-500">Pages</div>
+        </div>
+        <div class="text-center p-2 bg-gray-50 rounded">
+            <div class="text-lg font-bold text-green-600">{{ stats.new_articles }}</div>
+            <div class="text-xs text-gray-500">New</div>
+        </div>
+        <div class="text-center p-2 bg-gray-50 rounded">
+            <div class="text-lg font-bold text-yellow-600">{{ stats.duplicates }}</div>
+            <div class="text-xs text-gray-500">Dupes</div>
+        </div>
+        <div class="text-center p-2 bg-gray-50 rounded">
+            <div class="text-lg font-bold text-red-600">{{ stats.errors }}</div>
+            <div class="text-xs text-gray-500">Errors</div>
+        </div>
+    </div>
+    
+    <!-- Progress -->
+    {% if job.max_pages_run %}
+    <div>
+        <div class="flex justify-between text-xs text-gray-500 mb-1">
+            <span>Progress</span>
+            <span>{{ stats.pages_crawled }} / {{ job.max_pages_run }}</span>
+        </div>
+        {% with pct=stats.pages_crawled|default:0 %}
+        <div class="w-full bg-gray-200 rounded-full h-2">
+            <div class="bg-indigo-600 h-2 rounded-full transition-all duration-500" 
+                 style="width: {% widthratio pct job.max_pages_run 100 %}%"></div>
+        </div>
+        {% endwith %}
+    </div>
+    {% endif %}
+    
+    <!-- Time -->
+    <div class="text-sm space-y-1">
+        {% if stats.elapsed_display %}
+        <div class="flex justify-between">
+            <span class="text-gray-500">Elapsed</span>
+            <span class="text-gray-900 font-mono">{{ stats.elapsed_display }}</span>
+        </div>
+        {% endif %}
+        {% if stats.estimated_remaining %}
+        <div class="flex justify-between">
+            <span class="text-gray-500">Est. Remaining</span>
+            <span class="text-gray-900 font-mono">~{{ stats.estimated_remaining }}s</span>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Current status indicator -->
+    {% if job.status == 'running' %}
+    <div class="flex items-center justify-center space-x-2 text-blue-600 text-sm">
+        <svg class="animate-spin h-4 w-4" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+        </svg>
+        <span>Running...</span>
+    </div>
+    {% elif job.status == 'paused' %}
+    <div class="flex items-center justify-center space-x-2 text-yellow-600 text-sm">
+        <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 9v6m4-6v6m7-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+        </svg>
+        <span>Paused</span>
+    </div>
+    {% endif %}
+</div>

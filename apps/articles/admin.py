@@ -3,7 +3,7 @@ Admin interface for Article management.
 """
 
 from django.contrib import admin
-from django.utils.html import format_html
+from django.utils.html import format_html, mark_safe
 from .models import Article
 
 
@@ -200,9 +200,9 @@ class ArticleAdmin(admin.ModelAdmin):
         if obj.ai_content_detected:
             return format_html(
                 '<span style="color: red; font-weight: bold;">⚠ AI ({:.0%})</span>',
-                obj.ai_confidence_score
+                obj.ai_confidence_score or 0
             )
-        return format_html(
+        return mark_safe(
             '<span style="color: green;">✓ Human</span>'
         )
     ai_detected_badge.short_description = 'AI Check'

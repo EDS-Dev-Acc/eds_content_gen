@@ -26,30 +26,13 @@
         {{ schedule.next_run|date:"M d, H:i"|default:"Not scheduled" }}
     </td>
     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-        <button hx-post="{% url 'console:schedule_toggle' schedule.id %}"
-                hx-target="closest tr"
-                hx-swap="outerHTML"
-                class="{% if schedule.enabled %}text-yellow-600 hover:text-yellow-900{% else %}text-green-600 hover:text-green-900{% endif %} mr-3">
-            {{ schedule.enabled|yesno:"Pause,Enable" }}
-        </button>
-        <button hx-post="{% url 'console:schedule_run_now' schedule.id %}"
-                hx-swap="none"
-                class="text-green-600 hover:text-green-900 mr-3">
-            Run Now
-        </button>
-        <button hx-delete="{% url 'console:schedule_delete' schedule.id %}"
-                hx-target="closest tr"
-                hx-swap="outerHTML"
-                hx-confirm="Are you sure you want to delete this schedule?"
-                class="text-red-600 hover:text-red-900">
-            Delete
-        </button>
+        <span class="text-gray-400">Manage via Admin</span>
     </td>
 </tr>
 {% empty %}
 <tr>
     <td colspan="6" class="px-6 py-4 text-center text-gray-500">
-        No schedules found. <a href="#" onclick="openModal('add-schedule-modal')" class="text-indigo-600 hover:text-indigo-500">Create one?</a>
+        No schedules found. Configure schedules via <a href="/admin/django_celery_beat/" class="text-indigo-600 hover:text-indigo-500">Celery Beat Admin</a>
     </td>
 </tr>
 {% endfor %}

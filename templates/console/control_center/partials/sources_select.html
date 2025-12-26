@@ -1,0 +1,25 @@
+{% for source in sources %}
+<label class="flex items-center p-3 hover:bg-gray-50 cursor-pointer">
+    <input type="checkbox" name="sources" value="{{ source.id }}"
+           class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+    <div class="ml-3 flex-1 min-w-0">
+        <div class="flex items-center">
+            <span class="text-sm font-medium text-gray-900 truncate">{{ source.name }}</span>
+            {% if source.status != 'active' %}
+            <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 text-gray-800">
+                {{ source.get_status_display }}
+            </span>
+            {% endif %}
+        </div>
+        <div class="text-xs text-gray-500 truncate">{{ source.domain }}</div>
+    </div>
+    <div class="flex-shrink-0 text-right">
+        <span class="text-xs text-gray-400">{{ source.article_count }} articles</span>
+        {% if source.error_rate and source.error_rate > 10 %}
+        <div class="text-xs text-red-500">{{ source.error_rate|floatformat:0 }}% errors</div>
+        {% endif %}
+    </div>
+</label>
+{% empty %}
+<div class="p-4 text-sm text-gray-500 text-center">No sources match your search</div>
+{% endfor %}

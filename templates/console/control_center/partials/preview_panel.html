@@ -1,0 +1,42 @@
+<!-- Preview Panel for Job Form -->
+<div class="space-y-4">
+    {% if job %}
+    <!-- Summary counts -->
+    <div class="text-sm">
+        <div class="flex justify-between py-1 border-b border-gray-100">
+            <span class="text-gray-500">Sources</span>
+            <span class="font-medium text-gray-900">{{ source_count }}</span>
+        </div>
+        <div class="flex justify-between py-1 border-b border-gray-100">
+            <span class="text-gray-500">Ad-hoc Seeds</span>
+            <span class="font-medium text-gray-900">{{ seed_count }}</span>
+        </div>
+    </div>
+    
+    <!-- Limits Summary -->
+    <div class="text-sm">
+        <h5 class="font-medium text-gray-700 mb-1">Limits</h5>
+        <div class="space-y-1 text-gray-600">
+            <div>Max {{ job.max_pages_run }} pages ({{ job.max_pages_domain }} per domain)</div>
+            <div>Depth: {{ job.crawl_depth }} hops</div>
+            {% if job.time_limit_seconds %}
+            <div>Time limit: {{ job.time_limit_seconds }}s</div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- Policy Summary -->
+    <div class="text-sm">
+        <h5 class="font-medium text-gray-700 mb-1">Policy</h5>
+        <div class="space-y-1 text-gray-600">
+            <div>robots.txt: {% if job.respect_robots %}Respect{% else %}<span class="text-red-600">Ignore</span>{% endif %}</div>
+            <div>Fetch: {{ job.get_fetch_mode_display }}</div>
+            <div>Concurrency: {{ job.max_concurrent_global }}/{{ job.max_concurrent_domain }}</div>
+        </div>
+    </div>
+    {% else %}
+    <div class="text-sm text-gray-500 text-center py-4">
+        Configure your run to see preview
+    </div>
+    {% endif %}
+</div>

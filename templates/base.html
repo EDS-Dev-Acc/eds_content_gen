@@ -41,6 +41,10 @@
                                    class="{% if request.resolver_match.url_name == 'dashboard' %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">
                                     Dashboard
                                 </a>
+                                <a href="{% url 'console:control_center_list' %}" 
+                                   class="{% if 'control-center' in request.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">
+                                    Control Center
+                                </a>
                                 <a href="{% url 'console:sources' %}" 
                                    class="{% if 'sources' in request.path or 'runs' in request.path %}bg-gray-900 text-white{% else %}text-gray-300 hover:bg-gray-700 hover:text-white{% endif %} rounded-md px-3 py-2 text-sm font-medium">
                                     Sources & Runs

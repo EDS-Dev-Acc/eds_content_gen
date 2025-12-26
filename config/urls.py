@@ -6,11 +6,14 @@ from django.contrib import admin
 from django.urls import path, include
 from django.conf import settings
 from django.conf.urls.static import static
+from django.views.generic import RedirectView
 
 from apps.core.urls import auth_urlpatterns, llm_settings_urlpatterns
 from apps.articles.urls import exports_urlpatterns
 
 urlpatterns = [
+    # Root redirect to console
+    path('', RedirectView.as_view(url='/console/', permanent=False), name='root'),
     path('admin/', admin.site.urls),
     path('api/', include('rest_framework.urls')),
     path('api/content/', include('apps.content.urls')),

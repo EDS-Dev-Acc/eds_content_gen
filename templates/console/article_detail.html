@@ -45,15 +45,7 @@
                     <div class="text-xs text-gray-500">Quality Score</div>
                 </div>
                 {% endif %}
-                <button type="button"
-                        hx-post="{% url 'console:article_reprocess' article.id %}"
-                        hx-swap="none"
-                        class="inline-flex items-center rounded-md bg-indigo-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-indigo-500">
-                    <svg class="-ml-0.5 mr-1.5 h-5 w-5" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
-                    </svg>
-                    Reprocess
-                </button>
+                <span class="text-sm text-gray-500">Reprocessing available via admin</span>
             </div>
         </div>
     </div>
@@ -136,53 +128,40 @@
             </div>
 
             <!-- Raw Panel -->
-            <div id="panel-raw" class="article-panel hidden"
-                 hx-get="{% url 'console:article_raw' article.id %}"
-                 hx-trigger="revealed once"
-                 hx-swap="innerHTML">
-                <div class="text-center py-4 text-gray-500">
-                    <span class="animate-pulse">Loading raw content...</span>
+            <div id="panel-raw" class="article-panel hidden p-4">
+                <h4 class="font-medium text-gray-900 mb-2">Raw HTML</h4>
+                <div class="bg-gray-50 rounded p-4 max-h-96 overflow-auto">
+                    <pre class="text-xs text-gray-600 whitespace-pre-wrap">{{ article.raw_html|default:"No raw HTML available"|truncatechars:5000 }}</pre>
                 </div>
             </div>
 
             <!-- Extracted Panel -->
-            <div id="panel-extracted" class="article-panel hidden"
-                 hx-get="{% url 'console:article_extracted' article.id %}"
-                 hx-trigger="revealed once"
-                 hx-swap="innerHTML">
-                <div class="text-center py-4 text-gray-500">
-                    <span class="animate-pulse">Loading extracted content...</span>
+            <div id="panel-extracted" class="article-panel hidden p-4">
+                <h4 class="font-medium text-gray-900 mb-2">Extracted Text</h4>
+                <div class="bg-gray-50 rounded p-4 max-h-96 overflow-auto">
+                    <pre class="text-sm text-gray-700 whitespace-pre-wrap">{{ article.extracted_text|default:"No extracted text available" }}</pre>
                 </div>
             </div>
 
             <!-- Scores Panel -->
-            <div id="panel-scores" class="article-panel hidden"
-                 hx-get="{% url 'console:article_scores' article.id %}"
-                 hx-trigger="revealed once"
-                 hx-swap="innerHTML">
-                <div class="text-center py-4 text-gray-500">
-                    <span class="animate-pulse">Loading scores...</span>
-                </div>
+            <div id="panel-scores" class="article-panel hidden p-4">
+                <h4 class="font-medium text-gray-900 mb-2">Quality Scores</h4>
+                <dl class="grid grid-cols-2 gap-4">
+                    <div><dt class="text-sm text-gray-500">Quality Score</dt><dd class="text-lg font-medium">{{ article.quality_score|default:"-" }}</dd></div>
+                    <div><dt class="text-sm text-gray-500">Relevance Score</dt><dd class="text-lg font-medium">{{ article.relevance_score|default:"-" }}</dd></div>
+                </dl>
             </div>
 
             <!-- LLM Artifacts Panel -->
-            <div id="panel-llm" class="article-panel hidden"
-                 hx-get="{% url 'console:article_llm' article.id %}"
-                 hx-trigger="revealed once"
-                 hx-swap="innerHTML">
-                <div class="text-center py-4 text-gray-500">
-                    <span class="animate-pulse">Loading LLM artifacts...</span>
-                </div>
+            <div id="panel-llm" class="article-panel hidden p-4">
+                <h4 class="font-medium text-gray-900 mb-2">LLM Artifacts</h4>
+                <p class="text-sm text-gray-500">LLM processing details available in Django Admin.</p>
             </div>
 
             <!-- Usage Panel -->
-            <div id="panel-usage" class="article-panel hidden"
-                 hx-get="{% url 'console:article_usage' article.id %}"
-                 hx-trigger="revealed once"
-                 hx-swap="innerHTML">
-                <div class="text-center py-4 text-gray-500">
-                    <span class="animate-pulse">Loading usage history...</span>
-                </div>
+            <div id="panel-usage" class="article-panel hidden p-4">
+                <h4 class="font-medium text-gray-900 mb-2">Usage History</h4>
+                <p class="text-sm text-gray-500">Usage tracking details available in Django Admin.</p>
             </div>
         </div>
     </div>

@@ -31,8 +31,8 @@ class ScrapyCrawler(BaseCrawler):
     Will be replaced with full Scrapy implementation when dependencies are installed.
     """
 
-    def __init__(self, source):
-        super().__init__(source)
+    def __init__(self, source, config: dict = None):
+        super().__init__(source, config=config)
         self.rules = get_rules_for_domain(source.domain)
         self.pagination_config = get_pagination_config(source.domain)
         

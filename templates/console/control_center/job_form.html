@@ -1,0 +1,772 @@
+{% extends "base.html" %}
+
+{% block title %}{% if is_new %}New Crawl Run{% else %}Edit: {{ job.display_name }}{% endif %} - EMCIP{% endblock %}
+
+{% block page_title %}
+<div class="flex items-center space-x-3">
+    <a href="{% url 'console:control_center_list' %}" class="text-gray-400 hover:text-gray-600">
+        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+        </svg>
+    </a>
+    <span>{% if is_new %}New Crawl Run{% else %}Edit: {{ job.display_name }}{% endif %}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<form id="job-form" method="post" 
+      action="{% if job %}{% url 'console:control_center_save_existing' job_id=job.id %}{% else %}{% url 'console:control_center_save' %}{% endif %}"
+      hx-boost="true">
+    {% csrf_token %}
+    
+    <div class="flex gap-6">
+        <!-- Left Column: Configuration -->
+        <div class="flex-1 space-y-6 max-w-3xl">
+            
+            <!-- Section 1: Run Overview -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: true }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Run Overview</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <!-- Run Name -->
+                    <div>
+                        <label for="name" class="block text-sm font-medium text-gray-700">Run Name</label>
+                        <input type="text" name="name" id="name" 
+                               value="{{ job.name|default:'' }}"
+                               placeholder="Run – {{ now|date:'Y-m-d H:i' }}"
+                               maxlength="100"
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        <p class="mt-1 text-xs text-gray-500">1–100 characters. Defaults to timestamp if empty.</p>
+                    </div>
+                    
+                    <!-- Description -->
+                    <div>
+                        <label for="description" class="block text-sm font-medium text-gray-700">Description / Notes</label>
+                        <textarea name="description" id="description" rows="2" maxlength="1000"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                  placeholder="Optional notes about this run">{{ job.description|default:'' }}</textarea>
+                    </div>
+                    
+                    <!-- Run Type -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Run Type</label>
+                        <div class="flex flex-wrap gap-2" x-data="{ runType: '{{ job.run_type|default:'one_off' }}' }">
+                            {% for value, label in run_type_choices %}
+                            <label class="inline-flex items-center px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                                   :class="runType === '{{ value }}' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 hover:bg-gray-50'">
+                                <input type="radio" name="run_type" value="{{ value }}" 
+                                       x-model="runType"
+                                       class="sr-only">
+                                <span class="text-sm">{{ label }}</span>
+                            </label>
+                            {% empty %}
+                            <label class="inline-flex items-center px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                                   :class="runType === 'one_off' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 hover:bg-gray-50'">
+                                <input type="radio" name="run_type" value="one_off" x-model="runType" class="sr-only">
+                                <span class="text-sm">One-off Crawl</span>
+                            </label>
+                            <label class="inline-flex items-center px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                                   :class="runType === 'scheduled' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 hover:bg-gray-50'">
+                                <input type="radio" name="run_type" value="scheduled" x-model="runType" class="sr-only">
+                                <span class="text-sm">Scheduled</span>
+                            </label>
+                            <label class="inline-flex items-center px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                                   :class="runType === 'backfill' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 hover:bg-gray-50'">
+                                <input type="radio" name="run_type" value="backfill" x-model="runType" class="sr-only">
+                                <span class="text-sm">Backfill</span>
+                            </label>
+                            <label class="inline-flex items-center px-3 py-2 rounded-md border cursor-pointer transition-colors"
+                                   :class="runType === 'monitoring' ? 'border-indigo-500 bg-indigo-50 text-indigo-700' : 'border-gray-300 hover:bg-gray-50'">
+                                <input type="radio" name="run_type" value="monitoring" x-model="runType" class="sr-only">
+                                <span class="text-sm">Monitoring</span>
+                            </label>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    
+                    <!-- Priority -->
+                    <div>
+                        <label for="priority" class="block text-sm font-medium text-gray-700">Priority</label>
+                        <select name="priority" id="priority"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <option value="1" {% if job.priority == 1 %}selected{% endif %}>Lowest</option>
+                            <option value="3" {% if job.priority == 3 %}selected{% endif %}>Low</option>
+                            <option value="5" {% if job.priority == 5 or not job %}selected{% endif %}>Normal</option>
+                            <option value="7" {% if job.priority == 7 %}selected{% endif %}>High</option>
+                            <option value="9" {% if job.priority == 9 %}selected{% endif %}>Highest</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 2: Sources & Seeds -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: true }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Sources & Seeds</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <!-- Ad-hoc Seeds -->
+                    <div x-data="{ seeds: {{ job_seeds|default:'[]'|safe }} }">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Ad-hoc Seeds</label>
+                        <div class="space-y-2">
+                            <template x-for="(seed, index) in seeds" :key="index">
+                                <div class="flex gap-2">
+                                    <input type="url" :name="'seed_urls'" x-model="seed.url"
+                                           placeholder="https://example.com/..."
+                                           class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                    <input type="text" :name="'seed_labels'" x-model="seed.label"
+                                           placeholder="Label (optional)"
+                                           class="w-32 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                                    <button type="button" @click="seeds.splice(index, 1)"
+                                            class="px-2 py-1 text-red-600 hover:text-red-800">
+                                        <svg class="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                        </svg>
+                                    </button>
+                                </div>
+                            </template>
+                        </div>
+                        <button type="button" @click="seeds.push({url: '', label: ''})"
+                                class="mt-2 inline-flex items-center px-3 py-1.5 text-sm text-indigo-600 hover:text-indigo-800">
+                            <svg class="h-4 w-4 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                            </svg>
+                            Add Seed URL
+                        </button>
+                    </div>
+                    
+                    <!-- Select Sources -->
+                    <div x-data="{ 
+                        sourceOverrides: {{ source_overrides|default:'{}'|safe }},
+                        getOverride(id) { return this.sourceOverrides[id] || {}; },
+                        hasOverrides(id) { return Object.keys(this.sourceOverrides[id] || {}).length > 0; }
+                    }"
+                    @source-override-saved.window="sourceOverrides[$event.detail.sourceId] = $event.detail.overrides">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Select Sources</label>
+                        <div class="mb-2">
+                            <input type="text" 
+                                   placeholder="Search sources..."
+                                   hx-get="{% url 'console:control_center_sources' %}"
+                                   hx-trigger="keyup changed delay:300ms"
+                                   hx-target="#sources-select-list"
+                                   name="source_search"
+                                   class="block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        <div id="sources-select-list" class="max-h-60 overflow-y-auto border rounded-md divide-y divide-gray-200">
+                            {% for source in sources %}
+                            <div class="flex items-center p-3 hover:bg-gray-50">
+                                <label class="flex items-center flex-1 cursor-pointer">
+                                    <input type="checkbox" name="sources" value="{{ source.id }}"
+                                           {% if source.id in selected_sources %}checked{% endif %}
+                                           class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                    <div class="ml-3 flex-1">
+                                        <span class="text-sm font-medium text-gray-900">{{ source.name }}</span>
+                                        <span class="text-xs text-gray-500 ml-2">{{ source.domain }}</span>
+                                    </div>
+                                    <span class="text-xs text-gray-400 mr-2">{{ source.article_count }} articles</span>
+                                </label>
+                                <!-- Configure button with override indicator -->
+                                <button type="button" 
+                                        @click="$dispatch('open-source-overrides', { id: '{{ source.id }}', name: '{{ source.name }}', url: '{{ source.base_url }}', overrides: getOverride('{{ source.id }}') })"
+                                        class="text-xs px-2 py-1 rounded-md transition-colors"
+                                        :class="hasOverrides('{{ source.id }}') ? 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200' : 'text-gray-500 hover:text-gray-700 hover:bg-gray-100'">
+                                    <span x-show="hasOverrides('{{ source.id }}')">⚙️ Customized</span>
+                                    <span x-show="!hasOverrides('{{ source.id }}')">Configure</span>
+                                </button>
+                            </div>
+                            {% empty %}
+                            <div class="p-4 text-sm text-gray-500 text-center">No active sources found</div>
+                            {% endfor %}
+                        </div>
+                        <!-- Hidden input to send overrides -->
+                        <input type="hidden" name="source_overrides" :value="JSON.stringify(sourceOverrides)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 3: Crawl Behavior & Strategy -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: false }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Crawl Behavior & Strategy</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <!-- Crawl Strategy -->
+                    <div>
+                        <label for="crawl_strategy" class="block text-sm font-medium text-gray-700">Crawl Strategy</label>
+                        <select name="crawl_strategy" id="crawl_strategy"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                x-data x-on:change="$dispatch('strategy-changed', {value: $el.value})">
+                            <option value="breadth_first" {% if job.crawl_strategy == 'breadth_first' or not job %}selected{% endif %}>Breadth-first</option>
+                            <option value="depth_first" {% if job.crawl_strategy == 'depth_first' %}selected{% endif %}>Depth-first</option>
+                            <option value="priority" {% if job.crawl_strategy == 'priority' %}selected{% endif %}>Priority-based</option>
+                            <option value="focused" {% if job.crawl_strategy == 'focused' %}selected{% endif %}>Focused (Pattern-driven)</option>
+                        </select>
+                        <p class="mt-1 text-xs text-gray-500">How to order link discovery and queue processing</p>
+                    </div>
+                    
+                    <!-- URL Pattern Rules -->
+                    <div class="border-t pt-4" x-data="{ includePatterns: {{ job.include_patterns|default:'[]'|safe }}, excludePatterns: {{ job.exclude_patterns|default:'[]'|safe }} }">
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">URL Pattern Rules</h4>
+                        
+                        <!-- Include Patterns -->
+                        <div class="mb-4">
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Include Patterns (regex)</label>
+                            <div class="space-y-2">
+                                <template x-for="(pattern, index) in includePatterns" :key="'inc-' + index">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="includePatterns[index]"
+                                               placeholder="/articles/.*|/news/.*"
+                                               class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono text-sm">
+                                        <button type="button" @click="includePatterns.splice(index, 1)"
+                                                class="px-2 py-1 text-red-600 hover:text-red-800">
+                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <button type="button" @click="includePatterns.push('')"
+                                    class="mt-2 inline-flex items-center px-2 py-1 text-xs text-indigo-600 hover:text-indigo-800">
+                                <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                Add Include Pattern
+                            </button>
+                            <input type="hidden" name="include_patterns" :value="JSON.stringify(includePatterns)">
+                        </div>
+                        
+                        <!-- Exclude Patterns -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-2">Exclude Patterns (regex)</label>
+                            <div class="space-y-2">
+                                <template x-for="(pattern, index) in excludePatterns" :key="'exc-' + index">
+                                    <div class="flex gap-2">
+                                        <input type="text" x-model="excludePatterns[index]"
+                                               placeholder="/login|/signup|/cart"
+                                               class="flex-1 rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm font-mono text-sm">
+                                        <button type="button" @click="excludePatterns.splice(index, 1)"
+                                                class="px-2 py-1 text-red-600 hover:text-red-800">
+                                            <svg class="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </template>
+                            </div>
+                            <button type="button" @click="excludePatterns.push('')"
+                                    class="mt-2 inline-flex items-center px-2 py-1 text-xs text-indigo-600 hover:text-indigo-800">
+                                <svg class="h-3 w-3 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+                                </svg>
+                                Add Exclude Pattern
+                            </button>
+                            <input type="hidden" name="exclude_patterns" :value="JSON.stringify(excludePatterns)">
+                        </div>
+                    </div>
+                    
+                    <!-- Query Parameter Handling -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">Query Parameter Handling</h4>
+                        <label class="flex items-center">
+                            <input type="checkbox" name="normalize_tracking_params" 
+                                   {% if job.normalize_tracking_params or not job %}checked{% endif %}
+                                   class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                            <span class="ml-2 text-sm text-gray-700">Normalize tracking params (UTM, fbclid, etc.)</span>
+                        </label>
+                    </div>
+                    
+                    <!-- Content Types -->
+                    {% with content_types_json=job.content_types|default:'["html"]' %}
+                    <div class="border-t pt-4" x-data='{ contentTypes: {{ content_types_json|safe }} }'>
+                    {% endwith %}
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">Content Types to Fetch</h4>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" 
+                                       :checked="contentTypes.includes('html')"
+                                       @change="$event.target.checked ? contentTypes.push('html') : contentTypes.splice(contentTypes.indexOf('html'), 1)"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">HTML pages</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox"
+                                       :checked="contentTypes.includes('rss')"
+                                       @change="$event.target.checked ? contentTypes.push('rss') : contentTypes.splice(contentTypes.indexOf('rss'), 1)"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">RSS/Atom feeds</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox"
+                                       :checked="contentTypes.includes('json')"
+                                       @change="$event.target.checked ? contentTypes.push('json') : contentTypes.splice(contentTypes.indexOf('json'), 1)"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">JSON/XML endpoints</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox"
+                                       :checked="contentTypes.includes('pdf')"
+                                       @change="$event.target.checked ? contentTypes.push('pdf') : contentTypes.splice(contentTypes.indexOf('pdf'), 1)"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">PDF/Doc files</span>
+                            </label>
+                        </div>
+                        <input type="hidden" name="content_types" :value="JSON.stringify(contentTypes)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 4: Limits & Safety -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: true }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Limits & Safety</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <div class="grid grid-cols-2 gap-4">
+                        <!-- Max Pages Run -->
+                        <div>
+                            <label for="max_pages_run" class="block text-sm font-medium text-gray-700">Max Pages (Run)</label>
+                            <input type="number" name="max_pages_run" id="max_pages_run"
+                                   value="{{ job.max_pages_run|default:1000 }}"
+                                   min="1" max="1000000"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        
+                        <!-- Max Pages Domain -->
+                        <div>
+                            <label for="max_pages_domain" class="block text-sm font-medium text-gray-700">Max Pages (Domain)</label>
+                            <input type="number" name="max_pages_domain" id="max_pages_domain"
+                                   value="{{ job.max_pages_domain|default:500 }}"
+                                   min="1" max="100000"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                        
+                        <!-- Crawl Depth -->
+                        <div>
+                            <label for="crawl_depth" class="block text-sm font-medium text-gray-700">Crawl Depth</label>
+                            <input type="number" name="crawl_depth" id="crawl_depth"
+                                   value="{{ job.crawl_depth|default:2 }}"
+                                   min="0" max="20"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <p class="mt-1 text-xs text-gray-500">Link hops from seed (0-20)</p>
+                        </div>
+                        
+                        <!-- Time Limit -->
+                        <div>
+                            <label for="time_limit_seconds" class="block text-sm font-medium text-gray-700">Time Limit (seconds)</label>
+                            <input type="number" name="time_limit_seconds" id="time_limit_seconds"
+                                   value="{{ job.time_limit_seconds|default:'' }}"
+                                   min="60" placeholder="No limit"
+                                   class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                        </div>
+                    </div>
+                    
+                    <!-- Concurrency -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">Concurrency</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="max_concurrent_global" class="block text-sm font-medium text-gray-700">Global Max</label>
+                                <input type="number" name="max_concurrent_global" id="max_concurrent_global"
+                                       value="{{ job.max_concurrent_global|default:10 }}"
+                                       min="1" max="1000"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="max_concurrent_domain" class="block text-sm font-medium text-gray-700">Per-Domain Max</label>
+                                <input type="number" name="max_concurrent_domain" id="max_concurrent_domain"
+                                       value="{{ job.max_concurrent_domain|default:2 }}"
+                                       min="1" max="100"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Rate Limiting -->
+                    <div class="border-t pt-4">
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">Rate Limiting</h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="rate_delay_ms" class="block text-sm font-medium text-gray-700">Base Delay (ms)</label>
+                                <input type="number" name="rate_delay_ms" id="rate_delay_ms"
+                                       value="{{ job.rate_delay_ms|default:1000 }}"
+                                       min="0" max="60000"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="rate_jitter_pct" class="block text-sm font-medium text-gray-700">Jitter (%)</label>
+                                <input type="range" name="rate_jitter_pct" id="rate_jitter_pct"
+                                       value="{{ job.rate_jitter_pct|default:10 }}"
+                                       min="0" max="100"
+                                       class="mt-1 block w-full"
+                                       oninput="document.getElementById('jitter-value').textContent = this.value + '%'">
+                                <span id="jitter-value" class="text-xs text-gray-500">{{ job.rate_jitter_pct|default:10 }}%</span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Backfill Date Range (only shown for backfill runs) -->
+                    <div class="border-t pt-4" x-data x-show="document.querySelector('[name=run_type]:checked')?.value === 'backfill'" x-cloak>
+                        <h4 class="text-sm font-medium text-gray-900 mb-3">
+                            <span class="inline-flex items-center">
+                                Backfill Date Range
+                                <span class="ml-2 inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800">Required for backfill</span>
+                            </span>
+                        </h4>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="backfill_from" class="block text-sm font-medium text-gray-700">From</label>
+                                <input type="datetime-local" name="backfill_from" id="backfill_from"
+                                       value="{{ job.backfill_from|date:'Y-m-d\\TH:i'|default:'' }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="backfill_to" class="block text-sm font-medium text-gray-700">To</label>
+                                <input type="datetime-local" name="backfill_to" id="backfill_to"
+                                       value="{{ job.backfill_to|date:'Y-m-d\\TH:i'|default:'' }}"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 5: Robots & Compliance -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: false }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Robots & Compliance</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-sm font-medium text-gray-700">Respect robots.txt</label>
+                            <p class="text-xs text-gray-500">Follow crawl directives from robots.txt</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="respect_robots" 
+                                   {% if job.respect_robots or not job %}checked{% endif %}
+                                   class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                    
+                    <div>
+                        <label for="robots_override_notes" class="block text-sm font-medium text-gray-700">Override Notes</label>
+                        <textarea name="robots_override_notes" id="robots_override_notes" rows="2"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                  placeholder="Required if robots.txt is disabled">{{ job.robots_override_notes|default:'' }}</textarea>
+                    </div>
+                    
+                    <div class="flex items-center justify-between">
+                        <div>
+                            <label class="text-sm font-medium text-gray-700">Follow Canonical URLs</label>
+                            <p class="text-xs text-gray-500">Resolve to canonical URL when provided</p>
+                        </div>
+                        <label class="relative inline-flex items-center cursor-pointer">
+                            <input type="checkbox" name="follow_canonical" 
+                                   {% if job.follow_canonical or not job %}checked{% endif %}
+                                   class="sr-only peer">
+                            <div class="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                        </label>
+                    </div>
+                    
+                    <div>
+                        <label for="legal_notes" class="block text-sm font-medium text-gray-700">Legal / Permissions Notes</label>
+                        <textarea name="legal_notes" id="legal_notes" rows="2"
+                                  class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm"
+                                  placeholder="Optional notes about API access or permissions">{{ job.legal_notes|default:'' }}</textarea>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 6: Fetch Mode -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: false }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Fetch Mode & Technical</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Fetch Mode</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="fetch_mode" value="http" 
+                                       {% if job.fetch_mode == 'http' or not job %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Standard HTTP (no JS)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="fetch_mode" value="headless" 
+                                       {% if job.fetch_mode == 'headless' %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Headless Browser (JS rendering)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="fetch_mode" value="hybrid" 
+                                       {% if job.fetch_mode == 'hybrid' %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Hybrid (HTTP first, fallback to headless)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div>
+                        <label for="cookie_mode" class="block text-sm font-medium text-gray-700">Cookie Handling</label>
+                        <select name="cookie_mode" id="cookie_mode"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <option value="shared" {% if job.cookie_mode == 'shared' or not job %}selected{% endif %}>Shared Session</option>
+                            <option value="none" {% if job.cookie_mode == 'none' %}selected{% endif %}>No Cookies</option>
+                            <option value="stored" {% if job.cookie_mode == 'stored' %}selected{% endif %}>Stored Auth Session</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 7: Proxies & Network -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: false, proxyMode: '{{ job.proxy_mode|default:"none" }}' }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Proxies & Network</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <!-- Proxy Mode -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Proxy Configuration</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="radio" name="proxy_mode" value="none" 
+                                       x-model="proxyMode"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Direct Connection (no proxy)</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="proxy_mode" value="default_pool" 
+                                       x-model="proxyMode"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Default Proxy Pool</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="radio" name="proxy_mode" value="specific_group" 
+                                       x-model="proxyMode"
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Specific Proxy Group</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Proxy Group Selector -->
+                    <div x-show="proxyMode === 'specific_group'" class="bg-indigo-50 p-3 rounded-lg border border-indigo-200">
+                        <label for="proxy_group" class="block text-sm font-medium text-gray-700">Proxy Group</label>
+                        <select name="proxy_group" id="proxy_group"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <option value="">Select proxy group...</option>
+                            <option value="residential_us" {% if job.proxy_group == 'residential_us' %}selected{% endif %}>Residential US</option>
+                            <option value="residential_eu" {% if job.proxy_group == 'residential_eu' %}selected{% endif %}>Residential EU</option>
+                            <option value="datacenter" {% if job.proxy_group == 'datacenter' %}selected{% endif %}>Datacenter</option>
+                            <option value="mobile" {% if job.proxy_group == 'mobile' %}selected{% endif %}>Mobile</option>
+                        </select>
+                        <p class="text-xs text-indigo-600 mt-1">Configure proxy groups in Admin Settings</p>
+                    </div>
+                    
+                    <!-- Network Options -->
+                    <div class="border-t pt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Network Options</label>
+                        <div class="grid grid-cols-2 gap-4">
+                            <div>
+                                <label for="request_timeout" class="block text-xs text-gray-600">Request Timeout (sec)</label>
+                                <input type="number" name="request_timeout" id="request_timeout"
+                                       value="{{ job.request_timeout|default:30 }}"
+                                       min="5" max="120"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                            <div>
+                                <label for="retry_attempts" class="block text-xs text-gray-600">Retry Attempts</label>
+                                <input type="number" name="retry_attempts" id="retry_attempts"
+                                       value="{{ job.retry_attempts|default:3 }}"
+                                       min="0" max="10"
+                                       class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Retry Backoff -->
+                    <div>
+                        <label for="retry_backoff" class="block text-sm font-medium text-gray-700">Retry Backoff Strategy</label>
+                        <select name="retry_backoff" id="retry_backoff"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <option value="exponential" {% if job.retry_backoff == 'exponential' or not job %}selected{% endif %}>Exponential (2^n seconds)</option>
+                            <option value="linear" {% if job.retry_backoff == 'linear' %}selected{% endif %}>Linear (n * 2 seconds)</option>
+                            <option value="constant" {% if job.retry_backoff == 'constant' %}selected{% endif %}>Constant (5 seconds)</option>
+                        </select>
+                    </div>
+                    
+                    <!-- User Agent -->
+                    <div class="border-t pt-4">
+                        <label for="user_agent_mode" class="block text-sm font-medium text-gray-700">User Agent</label>
+                        <select name="user_agent_mode" id="user_agent_mode"
+                                class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                            <option value="rotate" {% if job.user_agent_mode == 'rotate' or not job %}selected{% endif %}>Rotate (Random per request)</option>
+                            <option value="fixed" {% if job.user_agent_mode == 'fixed' %}selected{% endif %}>Fixed (Custom)</option>
+                            <option value="googlebot" {% if job.user_agent_mode == 'googlebot' %}selected{% endif %}>Googlebot (News crawler)</option>
+                        </select>
+                    </div>
+                    
+                    <div>
+                        <label for="custom_user_agent" class="block text-xs text-gray-600">Custom User Agent (if Fixed)</label>
+                        <input type="text" name="custom_user_agent" id="custom_user_agent"
+                               value="{{ job.custom_user_agent|default:'' }}"
+                               placeholder="Mozilla/5.0..."
+                               class="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-500 focus:ring-indigo-500 sm:text-sm">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Section 8: Output & Processing -->
+            <div class="bg-white shadow rounded-lg" x-data="{ open: false }">
+                <button type="button" @click="open = !open" 
+                        class="w-full px-4 py-4 flex justify-between items-center border-b border-gray-200">
+                    <h3 class="text-lg font-medium text-gray-900">Output & Processing</h3>
+                    <svg class="h-5 w-5 text-gray-500 transition-transform" :class="{ 'rotate-180': open }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+                    </svg>
+                </button>
+                <div x-show="open" class="p-4 space-y-4">
+                    <!-- Output Targets -->
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Output Targets</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="output_to_db" 
+                                       {% if job.output_to_db or not job %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Store to Database</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Processing Options -->
+                    <div class="border-t pt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Processing</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="run_extraction" 
+                                       {% if job.run_extraction or not job %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Article Extraction & Cleaning</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="run_semantic_tagging" 
+                                       {% if job.run_semantic_tagging %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Semantic Tagging</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="run_ner" 
+                                       {% if job.run_ner %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">Named Entity Recognition (NER)</span>
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <!-- Deduplication -->
+                    <div class="border-t pt-4">
+                        <label class="block text-sm font-medium text-gray-700 mb-2">Deduplication</label>
+                        <div class="space-y-2">
+                            <label class="flex items-center">
+                                <input type="checkbox" name="dedupe_by_url" 
+                                       {% if job.dedupe_by_url or not job %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">By URL</span>
+                            </label>
+                            <label class="flex items-center">
+                                <input type="checkbox" name="dedupe_by_fingerprint" 
+                                       {% if job.dedupe_by_fingerprint %}checked{% endif %}
+                                       class="h-4 w-4 text-indigo-600 border-gray-300 rounded focus:ring-indigo-500">
+                                <span class="ml-2 text-sm text-gray-700">By Content Fingerprint</span>
+                            </label>
+                        </div>
+                        <div class="mt-2">
+                            <label for="dedupe_threshold" class="block text-xs text-gray-500">Threshold: <span id="threshold-value">{{ job.dedupe_threshold|default:0.8 }}</span></label>
+                            <input type="range" name="dedupe_threshold" id="dedupe_threshold"
+                                   value="{{ job.dedupe_threshold|default:0.8 }}"
+                                   min="0.5" max="0.95" step="0.05"
+                                   class="w-full"
+                                   oninput="document.getElementById('threshold-value').textContent = this.value">
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Right Column: Preview Panel -->
+        <div class="w-80 flex-shrink-0">
+            <div class="sticky top-4">
+                <div class="bg-white shadow rounded-lg p-4">
+                    <h3 class="text-lg font-medium text-gray-900 mb-4">Run Preview</h3>
+                    
+                    <!-- Validation Results -->
+                    <div id="validation-results"
+                         hx-post="{% url 'console:control_center_validate' %}"
+                         hx-trigger="change from:#job-form delay:500ms"
+                         hx-include="#job-form">
+                        <!-- Loaded via HTMX -->
+                    </div>
+                    
+                    <!-- Actions -->
+                    <div class="mt-6 space-y-3">
+                        <button type="submit" name="action" value="save"
+                                class="w-full inline-flex justify-center items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            Save Draft
+                        </button>
+                        <button type="submit" name="action" value="run"
+                                class="w-full inline-flex justify-center items-center px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500">
+                            <svg class="mr-2 h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+                            </svg>
+                            Run Now
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</form>
+
+<!-- Per-Source Overrides Drawer -->
+{% include "console/control_center/partials/source_overrides_drawer.html" %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js" defer></script>
+{% endblock %}
