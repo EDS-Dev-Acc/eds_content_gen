@@ -1509,10 +1509,10 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
         # Ensure snapshot exists for this launch
         if not job.selection_snapshot:
             job.persist_selection_snapshot(
-                source_ids=job.get_snapshot_source_ids(),
-                seeds=job.get_snapshot_seeds(),
-                config_overrides=job.get_snapshot_overrides().get('config_overrides'),
-                source_overrides=job.get_snapshot_overrides().get('source_overrides'),
+                source_ids=job._current_source_ids(),
+                seeds=job._current_seeds(),
+                config_overrides=job.config_overrides,
+                source_overrides=job.source_overrides,
             )
 
         # Create start event
