@@ -19,6 +19,7 @@ from .utils import (
     fetch_urls_parallel,
     normalize_url,
 )
+from .exceptions import CrawlCancelled
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +74,7 @@ class ScrapyCrawler(BaseCrawler):
 
         try:
             logger.info(f"Starting crawl of {self.source.name} ({self.source.url})")
+            self._raise_if_cancelled()
 
             # Collect article links from all pages
             all_article_links = self._crawl_with_pagination()
@@ -96,6 +98,9 @@ class ScrapyCrawler(BaseCrawler):
                 f"{results['duplicates']} duplicates from {results['pages_crawled']} pages"
             )
 
+        except CrawlCancelled:
+            logger.info("Crawl cancelled for %s", self.source.name)
+            raise
         except Exception as e:
             logger.error(f"Error during crawl: {e}")
             results['errors'] += 1
@@ -119,6 +124,7 @@ class ScrapyCrawler(BaseCrawler):
             Updated results dict
         """
         for i, url in enumerate(urls):
+            self._raise_if_cancelled()
             if i > 0:
                 # Use per-domain rate limiter instead of fixed delay
                 domain = urlparse(url).netloc
@@ -149,6 +155,7 @@ class ScrapyCrawler(BaseCrawler):
         # Filter out duplicates before fetching
         urls_to_fetch = []
         for url in urls:
+            self._raise_if_cancelled()
             normalized = self.url_normalizer.normalize(url)
             if not self._is_duplicate(normalized):
                 urls_to_fetch.append(url)
@@ -289,6 +296,7 @@ class ScrapyCrawler(BaseCrawler):
         current_url = self.source.url
         
         while self._pages_crawled < self.max_pages:
+            self._raise_if_cancelled()
             # Apply per-domain rate limiting
             if self._pages_crawled > 0:
                 self.rate_limiter.wait_if_needed(self.source.domain)
