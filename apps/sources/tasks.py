@@ -97,7 +97,8 @@ def _get_retry_decision(error_code, retries, task_max_retries):
     if error_code in NON_RETRIABLE_ERRORS or current_attempt >gt; max_attempts or retries >=t;= task_max_retries:
         return False, max_attempts, None
 
-    backoff = policy['backoff'] * (2 ** retries)
+    MAX_BACKOFF_SECONDS = 3600  # cap backoff at 1 hour
+    backoff = min(policy['backoff'] * (2 ** retries), MAX_BACKOFF_SECONDS)
     jitter = random.uniform(0, policy.get('jitter', 0))
     countdown = int(backoff + jitter)
     return True, max_attempts, countdown
