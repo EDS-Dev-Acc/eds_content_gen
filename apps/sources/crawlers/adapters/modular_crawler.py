@@ -16,6 +16,7 @@ from ..interfaces import CrawlerPipeline, FetchResult, Fetcher, LinkExtractor, P
 from ..pagination import AdaptivePaginator, create_paginator
 from ..registry import get_pagination_config, get_rules_for_domain
 from ..utils import URLDeduplicator, URLNormalizer
+from ..exceptions import CrawlCancelled
 
 logger = logging.getLogger(__name__)
 
@@ -150,6 +151,7 @@ class ModularCrawler(BaseCrawler):
         
         try:
             logger.info(f"Starting modular crawl of {self.source.name} ({self.source.url})")
+            self._raise_if_cancelled()
             
             # Phase 1: Collect article links with pagination
             article_links = self._crawl_with_pagination()
@@ -179,6 +181,9 @@ class ModularCrawler(BaseCrawler):
             if results['pages_crawled'] > 1 and results['new_articles'] > 0:
                 self._save_pagination_success(results['pages_crawled'])
             
+        except CrawlCancelled:
+            logger.info("Crawl cancelled for %s", self.source.name)
+            raise
         except Exception as e:
             logger.error(f"Error during crawl: {e}")
             results['errors'] += 1
@@ -242,6 +247,7 @@ class ModularCrawler(BaseCrawler):
         self.paginator.reset()
         
         while self._pages_crawled < self.max_pages:
+            self._raise_if_cancelled()
             # Fetch the current page
             result = self.fetcher.fetch(current_url)
             
@@ -272,6 +278,7 @@ class ModularCrawler(BaseCrawler):
             # Deduplicate
             new_links_count = 0
             for link in article_links:
+                self._raise_if_cancelled()
                 normalized = self.url_deduplicator.add_if_new(link.url)
                 if normalized:
                     all_links.append(normalized)
@@ -315,6 +322,7 @@ class ModularCrawler(BaseCrawler):
         Process articles one at a time.
         """
         for url in urls:
+            self._raise_if_cancelled()
             # Check for duplicate before fetching
             normalized = self.url_normalizer.normalize(url)
             if self._is_duplicate(normalized):
@@ -340,6 +348,7 @@ class ModularCrawler(BaseCrawler):
         # Filter out duplicates first
         urls_to_fetch = []
         for url in urls:
+            self._raise_if_cancelled()
             normalized = self.url_normalizer.normalize(url)
             if self._is_duplicate(normalized):
                 results['duplicates'] += 1
@@ -362,6 +371,7 @@ class ModularCrawler(BaseCrawler):
         
         # Process results
         for result in fetch_results:
+            self._raise_if_cancelled()
             if not result.success:
                 logger.debug(f"Error fetching {result.url}: {result.error}")
                 continue
