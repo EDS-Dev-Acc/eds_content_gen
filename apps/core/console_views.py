@@ -19,6 +19,7 @@ from django.views import View
 from django.views.decorators.http import require_http_methods
 from datetime import timedelta
 import json
+import logging
 import shutil
 import time
 
@@ -33,6 +34,9 @@ try:
     CELERY_BEAT_AVAILABLE = True
 except ImportError:
     CELERY_BEAT_AVAILABLE = False
+
+
+logger = logging.getLogger(__name__)
 
 
 # =============================================================================
@@ -2021,6 +2025,8 @@ class ControlCenterSSEView(LoginRequiredMixin, View):
             last_event_id = 0
             last_pages = -1  # Start with -1 to force initial stats send
             heartbeat_counter = 0
+            stream_started = time.monotonic()
+            max_stream_seconds = 55  # Force reconnects to avoid stale long-lived streams
             
             # Send immediate connection confirmation with current stats
             job.refresh_from_db()
@@ -2045,6 +2051,11 @@ class ControlCenterSSEView(LoginRequiredMixin, View):
             
             while True:
                 try:
+                    # Stop streaming if the client disconnected or the stream has lived too long
+                    if time.monotonic() - stream_started > max_stream_seconds:
+                        yield f"event: stream_timeout\ndata: {json.dumps({'reason': 'max_duration'})}\n\n"
+                        break
+                    
                     # Refresh job from database
                     job.refresh_from_db()
                     
@@ -2124,7 +2135,14 @@ class ControlCenterSSEView(LoginRequiredMixin, View):
                     # Wait before next poll
                     time.sleep(1)
                     
+                except GeneratorExit:
+                    logger.info("SSE generator closed for job %s (likely client disconnect)", job_id)
+                    break
+                except (BrokenPipeError, ConnectionResetError):
+                    logger.warning("SSE connection lost for job %s", job_id)
+                    break
                 except Exception as e:
+                    logger.exception("SSE error for job %s", job_id)
                     yield f"event: error\ndata: {json.dumps({'message': str(e)})}\n\n"
                     break
         

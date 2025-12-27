@@ -382,6 +382,10 @@ function jobMonitor() {
     return {
         connected: false,
         eventSource: null,
+        reconnectTimer: null,
+        staleCheckTimer: null,
+        lastHeartbeatTs: null,
+        staleThresholdMs: 12000,
         stats: {
             pages_crawled: {{ job.pages_crawled|default:0 }},
             new_articles: {{ job.new_articles|default:0 }},
@@ -400,12 +404,23 @@ function jobMonitor() {
             if (this.eventSource) {
                 this.eventSource.close();
             }
+            if (this.reconnectTimer) {
+                clearTimeout(this.reconnectTimer);
+                this.reconnectTimer = null;
+            }
+            if (this.staleCheckTimer) {
+                clearInterval(this.staleCheckTimer);
+                this.staleCheckTimer = null;
+            }
             
             this.eventSource = new EventSource(url);
+            this.lastHeartbeatTs = Date.now();
+            this.startStaleCheck(url);
             
             this.eventSource.onopen = () => {
                 console.log('SSE connection opened');
                 this.connected = true;
+                this.lastHeartbeatTs = Date.now();
             };
             
             this.eventSource.onerror = (e) => {
@@ -416,7 +431,7 @@ function jobMonitor() {
                     this.eventSource = null;
                 }
                 // Try to reconnect after 5 seconds
-                setTimeout(() => this.connect(url), 5000);
+                this.reconnectTimer = setTimeout(() => this.connect(url), 5000);
             };
             
             this.eventSource.addEventListener('connected', (e) => {
@@ -424,11 +439,13 @@ function jobMonitor() {
                 const data = JSON.parse(e.data);
                 this.stats = { ...this.stats, ...data };
                 this.connected = true;
+                this.lastHeartbeatTs = Date.now();
             });
             
             this.eventSource.addEventListener('stats', (e) => {
                 const data = JSON.parse(e.data);
                 this.stats = { ...this.stats, ...data };
+                this.lastHeartbeatTs = Date.now();
             });
             
             this.eventSource.addEventListener('log', (e) => {
@@ -438,6 +455,7 @@ function jobMonitor() {
                 if (this.events.length > 50) {
                     this.events = this.events.slice(0, 50);
                 }
+                this.lastHeartbeatTs = Date.now();
             });
             
             this.eventSource.addEventListener('complete', (e) => {
@@ -451,8 +469,35 @@ function jobMonitor() {
             
             this.eventSource.addEventListener('heartbeat', (e) => {
                 // Just confirms connection is alive
-                console.log('SSE heartbeat received');
+                this.lastHeartbeatTs = Date.now();
             });
+            
+            this.eventSource.addEventListener('stream_timeout', () => {
+                // Server intentionally closed stream; reconnect promptly
+                if (this.eventSource) {
+                    this.eventSource.close();
+                    this.eventSource = null;
+                }
+                this.connected = false;
+                this.reconnectTimer = setTimeout(() => this.connect(url), 500);
+            });
+        },
+        
+        startStaleCheck(url) {
+            this.staleCheckTimer = setInterval(() => {
+                const now = Date.now();
+                if (this.lastHeartbeatTs && now - this.lastHeartbeatTs > this.staleThresholdMs) {
+                    console.warn('SSE heartbeat stale, reconnecting...');
+                    if (this.eventSource) {
+                        this.eventSource.close();
+                        this.eventSource = null;
+                    }
+                    this.connected = false;
+                    clearInterval(this.staleCheckTimer);
+                    this.staleCheckTimer = null;
+                    this.reconnectTimer = setTimeout(() => this.connect(url), 500);
+                }
+            }, 3000);
         },
         
         formatTime(seconds) {
@@ -468,6 +513,12 @@ function jobMonitor() {
         destroy() {
             if (this.eventSource) {
                 this.eventSource.close();
+            }
+            if (this.reconnectTimer) {
+                clearTimeout(this.reconnectTimer);
+            }
+            if (this.staleCheckTimer) {
+                clearInterval(this.staleCheckTimer);
             }
         }
     };
