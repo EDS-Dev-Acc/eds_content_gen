@@ -82,8 +82,14 @@ def crawl_source(
     from apps.sources.models import Source, CrawlJob, CrawlJobSourceResult
     from apps.sources.crawlers import get_crawler
 
-    # Set up logging context with request_id if provided
-    log_extra = {'request_id': request_id} if request_id else {}
+    # Set up logging context with request_id and job identifiers if provided
+    log_extra = {}
+    if request_id:
+        log_extra['request_id'] = request_id
+    if parent_job_id:
+        log_extra['parent_job_id'] = str(parent_job_id)
+    if crawl_job_id:
+        log_extra['crawl_job_id'] = str(crawl_job_id)
     
     config_overrides = config_overrides or {}
     crawl_job = None
@@ -126,15 +132,29 @@ def crawl_source(
             crawl_job.task_id = self.request.id
             # Check for cancellation
             if crawl_job.status == 'cancelled':
-                logger.info(f"Job {crawl_job_id} cancelled, skipping")
+                logger.info(f"Job {crawl_job_id} cancelled, skipping", extra=log_extra)
                 return {'success': False, 'status': 'skipped', 'reason': 'Job cancelled'}
         elif parent_job_id:
             # Multi-source run - update the source result
             parent_job = CrawlJob.objects.get(id=parent_job_id)
-            source_result = CrawlJobSourceResult.objects.get(
-                crawl_job=parent_job,
-                source=source
-            )
+            try:
+                source_result = CrawlJobSourceResult.objects.get(
+                    crawl_job=parent_job,
+                    source=source
+                )
+            except CrawlJobSourceResult.DoesNotExist:
+                error_message = f"CrawlJobSourceResult not found for parent job {parent_job_id} and source {source_id}"
+                logger.error(error_message, extra=log_extra)
+                parent_job.status = 'failed'
+                parent_job.error_message = error_message
+                parent_job.completed_at = timezone.now()
+                parent_job.finalized_at = timezone.now()
+                parent_job.save(update_fields=['status', 'error_message', 'completed_at', 'finalized_at'])
+                _finalize_parent_job(parent_job_id)
+                return {
+                    'success': False,
+                    'error': 'CrawlJobSourceResult not found'
+                }
             source_result.status = 'running'
             source_result.started_at = timezone.now()
             source_result.save()
@@ -146,6 +166,7 @@ def crawl_source(
                 triggered_by='schedule' if parent_job.triggered_by == 'schedule' else 'api',
                 config_overrides=config_overrides,
             )
+            log_extra['crawl_job_id'] = str(crawl_job.id)
         else:
             # Legacy: create new crawl job (for scheduled tasks)
             crawl_job = CrawlJob.objects.create(
@@ -154,6 +175,7 @@ def crawl_source(
                 task_id=self.request.id,
                 triggered_by='schedule',
             )
+            log_extra['crawl_job_id'] = str(crawl_job.id)
 
         # Update status to running
         if crawl_job.status != 'running':
@@ -206,7 +228,8 @@ def crawl_source(
 
         logger.info(
             f"Crawl complete for {source.name}: "
-            f"{results.get('new_articles', 0)} new articles"
+            f"{results.get('new_articles', 0)} new articles",
+            extra=log_extra
         )
 
         return {
@@ -218,14 +241,44 @@ def crawl_source(
         }
 
     except Source.DoesNotExist:
-        logger.error(f"Source {source_id} not found")
+        error_message = f"Source {source_id} not found"
+        logger.error(error_message, extra=log_extra)
+
+        if crawl_job_id:
+            crawl_job = CrawlJob.objects.filter(id=crawl_job_id).first()
+            if crawl_job:
+                crawl_job.status = 'failed'
+                crawl_job.completed_at = timezone.now()
+                crawl_job.error_message = error_message
+                crawl_job.save(update_fields=['status', 'completed_at', 'error_message'])
+
+        if parent_job_id:
+            source_result = CrawlJobSourceResult.objects.filter(
+                crawl_job_id=parent_job_id,
+                source_id=source_id
+            ).first()
+            if source_result:
+                source_result.status = 'failed'
+                source_result.completed_at = timezone.now()
+                source_result.error_code = 'SOURCE_NOT_FOUND'
+                source_result.error_message = error_message
+                source_result.save(update_fields=['status', 'completed_at', 'error_code', 'error_message'])
+            parent_job = CrawlJob.objects.filter(id=parent_job_id).first()
+            if parent_job:
+                parent_job.status = 'failed'
+                parent_job.error_message = error_message
+                parent_job.completed_at = timezone.now()
+                parent_job.finalized_at = timezone.now()
+                parent_job.save(update_fields=['status', 'error_message', 'completed_at', 'finalized_at'])
+            _finalize_parent_job(parent_job_id)
+
         return {
             'success': False,
             'error': 'Source not found'
         }
 
     except Exception as exc:
-        logger.error(f"Error crawling source {source_id}: {exc}")
+        logger.error(f"Error crawling source {source_id}: {exc}", extra=log_extra)
 
         # Classify the error for taxonomy
         error_code, error_message = _classify_error(exc)
