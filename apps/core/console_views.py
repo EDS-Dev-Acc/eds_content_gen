@@ -2422,6 +2422,7 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
                 crawl_depth=seed.crawl_depth,
                 fetch_mode=seed.fetch_mode,
                 proxy_group=seed.proxy_group,
+                custom_headers=seed.custom_headers,
             )
         
         # Clone source associations
