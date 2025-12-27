@@ -144,8 +144,8 @@ def get_dashboard_stats():
             'llm_cost_today': float(usage_stats['today_total'] or 0.0),
         }
     except Exception:
-        stats = default_stats
-    
+        return default_stats
+
     cache.set(cache_key, stats, 30)
     return stats
 
