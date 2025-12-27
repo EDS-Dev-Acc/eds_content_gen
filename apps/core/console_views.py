@@ -379,23 +379,42 @@ class RunStartView(LoginRequiredMixin, View):
                 status=404
             )
         
+        if source.status != 'active':
+            return HttpResponse(
+                '<div class="text-red-600 p-4">Source must be active to start a crawl.</div>',
+                status=400
+            )
+        
         # Create a CrawlJob
         job = CrawlJob.objects.create(
             source=source,
             status='pending',
-            job_type='manual'
+            triggered_by='manual',
+            triggered_by_user=request.user,
+            is_multi_source=False,
         )
         
         # Try to trigger celery task
         try:
             from apps.sources.tasks import crawl_source
-            crawl_source.delay(str(job.id))
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
-        except Exception as e:
-            # Celery may not be running, keep as pending
-            pass
+            async_result = crawl_source.delay(
+                str(source.id),
+                crawl_job_id=str(job.id)
+            )
+            job.task_id = async_result.id
+            job.status = 'queued'
+            job.save(update_fields=['task_id', 'status'])
+        except Exception:
+            job.error_message = (
+                'Unable to queue crawl job. Please ensure the Celery worker is running.'
+            )
+            job.save(update_fields=['error_message'])
+            return HttpResponse(
+                '<tr><td colspan="7" class="px-6 py-4 text-sm text-red-600">'
+                'Unable to start crawl. Please ensure the Celery worker is running.'
+                '</td></tr>',
+                status=503
+            )
         
         # Return updated runs list
         runs = CrawlJob.objects.order_by('-created_at')
@@ -439,22 +458,52 @@ class SourceCrawlView(LoginRequiredMixin, View):
     def post(self, request, source_id):
         source = get_object_or_404(Source, id=source_id)
         
+        if source.status != 'active':
+            return HttpResponse(
+                '<div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4">'
+                '<p class="text-sm text-red-700">Source must be active to start a crawl.</p>'
+                '</div>',
+                status=400
+            )
+        
         # Create a CrawlJob
         job = CrawlJob.objects.create(
             source=source,
             status='pending',
-            job_type='manual'
+            triggered_by='manual',
+            triggered_by_user=request.user,
+            is_multi_source=False,
         )
         
         # Try to trigger celery task
         try:
             from apps.sources.tasks import crawl_source
-            crawl_source.delay(str(job.id))
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
-        except Exception as e:
-            pass
+            async_result = crawl_source.delay(
+                str(source.id),
+                crawl_job_id=str(job.id)
+            )
+            job.task_id = async_result.id
+            job.status = 'queued'
+            job.save(update_fields=['task_id', 'status'])
+        except Exception:
+            job.error_message = (
+                'Unable to queue crawl job. Please ensure the Celery worker is running.'
+            )
+            job.save(update_fields=['error_message'])
+            return HttpResponse('''
+                <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4" id="crawl-error-alert">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.603c.75 1.335-.213 2.998-1.742 2.998H3.48c-1.53 0-2.493-1.663-1.743-2.998L8.257 3.1zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-8a1 1 0 00-.894.553l-3 6a1 1 0 101.788.894L10 8.618l2.106 4.829a1 1 0 101.788-.894l-3-6A1 1 0 0010 6z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700">Unable to start crawl. Please ensure the Celery worker is running.</p>
+                        </div>
+                    </div>
+                </div>
+            ''', status=503)
         
         # Return a success message partial
         return HttpResponse(f'''
@@ -466,7 +515,7 @@ class SourceCrawlView(LoginRequiredMixin, View):
                         </svg>
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm text-green-700">Crawl started for <strong>{source.name}</strong>. Job ID: {job.id}</p>
+                        <p class="text-sm text-green-700">Crawl queued for <strong>{source.name}</strong>. Job ID: {job.id}</p>
                     </div>
                 </div>
             </div>
