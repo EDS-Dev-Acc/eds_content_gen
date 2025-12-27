@@ -1,6 +1,7 @@
 # Core Django
 Django==5.0.1
 djangorestframework==3.14.0
+django-filter==24.3
 djangorestframework-simplejwt==5.3.1
 python-dotenv==1.0.0
 pyjwt==2.8.0
@@ -10,6 +11,7 @@ psycopg2-binary==2.9.9
 
 # Task Queue
 celery==5.6.0
+django-celery-beat==2.6.0
 redis==7.1.0
 
 # API & LLM

@@ -11,6 +11,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.core.cache import cache
 from django.core.paginator import Paginator
+from django.core.validators import URLValidator
 from django.db import connection, models
 from django.db.models import Sum, Count, Avg, Q, Case, When
 from django.http import HttpResponse
@@ -22,11 +23,14 @@ from datetime import timedelta
 import json
 import shutil
 import time
+from types import SimpleNamespace
+from urllib.parse import urlparse, urlunparse
 
 from apps.sources.models import Source, CrawlJob
 from apps.seeds.models import Seed
 from apps.articles.models import Article
 from apps.core.models import LLMSettings, LLMUsageLog
+from apps.core.security import URLNormalizer
 
 # Import celery beat models for schedules
 try:
@@ -361,38 +365,112 @@ class RunsListPartial(LoginRequiredMixin, View):
 class SourceCreateView(LoginRequiredMixin, View):
     """Create a new source via HTMX POST."""
     login_url = '/console/login/'
+    url_validator = URLValidator(schemes=['http', 'https'])
+
+    def _normalize_domain(self, hostname: str) -> str:
+        """Normalize domain for uniqueness checks."""
+        domain = (hostname or '').lower().strip().rstrip('.')
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        return domain.encode('idna').decode('ascii')
+
+    def _apply_normalized_domain(self, normalized_domain: str, parsed_url):
+        """Rebuild the normalized URL with the normalized domain value."""
+        netloc = normalized_domain
+        if parsed_url.port:
+            netloc = f"{normalized_domain}:{parsed_url.port}"
+        if parsed_url.username:
+            userinfo = parsed_url.username
+            if parsed_url.password:
+                userinfo += f":{parsed_url.password}"
+            netloc = f"{userinfo}@{netloc}"
+
+        path = parsed_url.path or '/'
+        query = parsed_url.query or ''
+        return urlunparse((parsed_url.scheme, netloc, path, '', query, ''))
+
+    def _render_errors(self, request, non_field_errors=None, field_errors=None, status=400):
+        """Render error block and retarget to modal error container."""
+        errors = SimpleNamespace(
+            non_field_errors=non_field_errors or []
+        )
+        response = render(
+            request,
+            'console/partials/form_errors.html',
+            {
+                'errors': errors,
+                'field_errors': field_errors or {},
+            },
+            status=status,
+        )
+        response['HX-Retarget'] = '#add-source-errors'
+        response['HX-Reswap'] = 'innerHTML'
+        return response
     
     def post(self, request):
-        from urllib.parse import urlparse
-        
         name = request.POST.get('name', '').strip()
         url = request.POST.get('url', '').strip()
         source_type = request.POST.get('source_type', 'news_site')
-        
-        if not name or not url:
-            return HttpResponse(
-                '<div class="text-red-600 p-4">Name and URL are required.</div>',
-                status=400
+
+        field_errors = {}
+        non_field_errors = []
+        normalized_url = None
+        normalized_domain = None
+
+        if not name:
+            field_errors['Name'] = ['Please provide a name for the source.']
+
+        if not url:
+            field_errors['URL'] = ['Please provide a URL for the source.']
+        else:
+            try:
+                self.url_validator(url)
+            except ValidationError:
+                field_errors['URL'] = [
+                    'Enter a valid URL starting with http:// or https://.'
+                ]
+            else:
+                normalized_url = URLNormalizer.normalize(url)
+                parsed = urlparse(normalized_url)
+                if not parsed.scheme or not parsed.hostname:
+                    field_errors['URL'] = [
+                        'The URL must include a valid domain.'
+                    ]
+                else:
+                    try:
+                        normalized_domain = self._normalize_domain(parsed.hostname)
+                    except UnicodeError:
+                        field_errors['URL'] = [
+                            'The domain contains invalid characters.'
+                        ]
+                    else:
+                        if not normalized_domain:
+                            field_errors['URL'] = [
+                                'The URL must include a valid domain.'
+                            ]
+                        elif Source.objects.filter(domain=normalized_domain).exists():
+                            field_errors['URL'] = [
+                                f"A source with domain '{normalized_domain}' already exists."
+                            ]
+                        else:
+                            normalized_url = self._apply_normalized_domain(
+                                normalized_domain,
+                                parsed,
+                            )
+
+        if field_errors or non_field_errors:
+            return self._render_errors(
+                request,
+                non_field_errors=non_field_errors,
+                field_errors=field_errors,
+                status=400,
             )
-        
-        # Extract domain from URL
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        
-        # Check for duplicate domain
-        if Source.objects.filter(domain=domain).exists():
-            return HttpResponse(
-                f'<div class="text-red-600 p-4">A source with domain {domain} already exists.</div>',
-                status=400
-            )
-        
+
         # Create the source
         Source.objects.create(
             name=name,
-            url=url,
-            domain=domain,
+            url=normalized_url,
+            domain=normalized_domain,
             source_type=source_type,
             status='active'
         )
@@ -425,23 +503,42 @@ class RunStartView(LoginRequiredMixin, View):
                 status=404
             )
         
+        if source.status != 'active':
+            return HttpResponse(
+                '<div class="text-red-600 p-4">Source must be active to start a crawl.</div>',
+                status=400
+            )
+        
         # Create a CrawlJob
         job = CrawlJob.objects.create(
             source=source,
             status='pending',
-            job_type='manual'
+            triggered_by='manual',
+            triggered_by_user=request.user,
+            is_multi_source=False,
         )
         
         # Try to trigger celery task
         try:
             from apps.sources.tasks import crawl_source
-            crawl_source.delay(str(job.id))
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
-        except Exception as e:
-            # Celery may not be running, keep as pending
-            pass
+            async_result = crawl_source.delay(
+                str(source.id),
+                crawl_job_id=str(job.id)
+            )
+            job.task_id = async_result.id
+            job.status = 'queued'
+            job.save(update_fields=['task_id', 'status'])
+        except Exception:
+            job.error_message = (
+                'Unable to queue crawl job. Please ensure the Celery worker is running.'
+            )
+            job.save(update_fields=['error_message'])
+            return HttpResponse(
+                '<tr><td colspan="7" class="px-6 py-4 text-sm text-red-600">'
+                'Unable to start crawl. Please ensure the Celery worker is running.'
+                '</td></tr>',
+                status=503
+            )
         
         # Return updated runs list
         runs = CrawlJob.objects.order_by('-created_at')
@@ -485,22 +582,52 @@ class SourceCrawlView(LoginRequiredMixin, View):
     def post(self, request, source_id):
         source = get_object_or_404(Source, id=source_id)
         
+        if source.status != 'active':
+            return HttpResponse(
+                '<div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4">'
+                '<p class="text-sm text-red-700">Source must be active to start a crawl.</p>'
+                '</div>',
+                status=400
+            )
+        
         # Create a CrawlJob
         job = CrawlJob.objects.create(
             source=source,
             status='pending',
-            job_type='manual'
+            triggered_by='manual',
+            triggered_by_user=request.user,
+            is_multi_source=False,
         )
         
         # Try to trigger celery task
         try:
             from apps.sources.tasks import crawl_source
-            crawl_source.delay(str(job.id))
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
-        except Exception as e:
-            pass
+            async_result = crawl_source.delay(
+                str(source.id),
+                crawl_job_id=str(job.id)
+            )
+            job.task_id = async_result.id
+            job.status = 'queued'
+            job.save(update_fields=['task_id', 'status'])
+        except Exception:
+            job.error_message = (
+                'Unable to queue crawl job. Please ensure the Celery worker is running.'
+            )
+            job.save(update_fields=['error_message'])
+            return HttpResponse('''
+                <div class="bg-red-50 border-l-4 border-red-400 p-4 mb-4" id="crawl-error-alert">
+                    <div class="flex">
+                        <div class="flex-shrink-0">
+                            <svg class="h-5 w-5 text-red-400" viewBox="0 0 20 20" fill="currentColor">
+                                <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l6.518 11.603c.75 1.335-.213 2.998-1.742 2.998H3.48c-1.53 0-2.493-1.663-1.743-2.998L8.257 3.1zM11 14a1 1 0 10-2 0 1 1 0 002 0zm-1-8a1 1 0 00-.894.553l-3 6a1 1 0 101.788.894L10 8.618l2.106 4.829a1 1 0 101.788-.894l-3-6A1 1 0 0010 6z" clip-rule="evenodd" />
+                            </svg>
+                        </div>
+                        <div class="ml-3">
+                            <p class="text-sm text-red-700">Unable to start crawl. Please ensure the Celery worker is running.</p>
+                        </div>
+                    </div>
+                </div>
+            ''', status=503)
         
         # Return a success message partial
         return HttpResponse(f'''
@@ -512,7 +639,7 @@ class SourceCrawlView(LoginRequiredMixin, View):
                         </svg>
                     </div>
                     <div class="ml-3">
-                        <p class="text-sm text-green-700">Crawl started for <strong>{source.name}</strong>. Job ID: {job.id}</p>
+                        <p class="text-sm text-green-700">Crawl queued for <strong>{source.name}</strong>. Job ID: {job.id}</p>
                     </div>
                 </div>
             </div>
@@ -1540,38 +1667,26 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
                 </div>
             ''')
         
-        # Update status and launch
-        job.status = 'pending'
+        # Update status and queue orchestrated task
+        job.status = 'queued'
         job.save()
-        
-        # Create start event
+
         CrawlJobEvent.objects.create(
             crawl_job=job,
             event_type='start',
             severity='info',
-            message=f'Run launched by {request.user.username}'
+            message=f'Run queued by {request.user.username}'
         )
-        
-        # Trigger celery task
+
         try:
-            from apps.sources.tasks import crawl_source
-            if job.is_multi_source:
-                # Launch multiple tasks - each source has a CrawlJobSourceResult
-                for result in job.source_results.all():
-                    crawl_source.delay(str(result.source_id), parent_job_id=str(job.id))
-            else:
-                # Single source - pass crawl_job_id (not parent_job_id) to use existing job record
-                crawl_source.delay(str(job.source_id) if job.source_id else None, crawl_job_id=str(job.id))
-            
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
+            from apps.sources.tasks import run_crawl_job
+            run_crawl_job.delay(str(job.id))
         except Exception as e:
             CrawlJobEvent.objects.create(
                 crawl_job=job,
                 event_type='error',
                 severity='error',
-                message=f'Failed to launch: {str(e)}'
+                message=f'Failed to queue run: {str(e)}'
             )
         
         # Redirect to detail view
