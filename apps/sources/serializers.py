@@ -115,6 +115,7 @@ class CrawlJobDetailSerializer(serializers.ModelSerializer):
             'triggered_by_user_name',
             'is_multi_source',
             'config_overrides',
+            'selection_snapshot',
             'task_id',
             'started_at',
             'completed_at',

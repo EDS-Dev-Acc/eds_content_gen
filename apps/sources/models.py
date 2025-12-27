@@ -3,8 +3,10 @@ Source models for EMCIP project.
 Manages news sources and crawling metadata.
 """
 
+from copy import deepcopy
+
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.db import models
-from django.core.validators import MinValueValidator, MaxValueValidator
 from apps.core.models import BaseModel
 
 
@@ -835,6 +837,13 @@ class CrawlJob(BaseModel):
         help_text='Source-specific config overrides keyed by source_id'
     )
 
+    selection_snapshot = models.JSONField(
+        default=dict,
+        blank=True,
+        verbose_name='Selection Snapshot',
+        help_text='Snapshot of sources, seeds, and overrides captured at launch/clone time'
+    )
+
     # Optional link to schedule (will be used in Phase 10.3)
     # schedule = models.ForeignKey(
     #     'django_celery_beat.PeriodicTask',
@@ -923,6 +932,94 @@ class CrawlJob(BaseModel):
         """Generate default run name based on timestamp."""
         from django.utils import timezone
         return f"Run – {timezone.now().strftime('%Y-%m-%d %H:%M')}"
+
+    def _current_source_ids(self):
+        """Return current source IDs for this job as strings."""
+        if self.is_multi_source:
+            ids = self.source_results.values_list('source_id', flat=True)
+        elif self.source_id:
+            ids = [self.source_id]
+        else:
+            ids = []
+        return [str(source_id) for source_id in ids if source_id]
+
+    def _current_seeds(self):
+        """Return current seed metadata for this job."""
+        return list(self.job_seeds.values('url', 'label', 'status'))
+
+    def persist_selection_snapshot(
+        self,
+        source_ids=None,
+        seeds=None,
+        config_overrides=None,
+        source_overrides=None,
+    ):
+        """
+        Capture and store immutable snapshot of sources/seeds/overrides.
+
+        Args:
+            source_ids: Optional iterable of source IDs (UUID/str)
+            seeds: Optional list of seed dicts (url/label/status)
+            config_overrides: Optional config overrides dict
+            source_overrides: Optional per-source overrides dict
+
+        Returns:
+            dict snapshot saved to the job
+        """
+        snapshot = {
+            'source_ids': [
+                str(source_id) for source_id in (
+                    source_ids if source_ids is not None else self._current_source_ids()
+                ) if source_id
+            ],
+            'seeds': deepcopy(seeds if seeds is not None else self._current_seeds()),
+            'config_overrides': deepcopy(
+                config_overrides if config_overrides is not None else self.config_overrides or {}
+            ),
+            'source_overrides': deepcopy(
+                source_overrides if source_overrides is not None else self.source_overrides or {}
+            ),
+        }
+
+        self.selection_snapshot = snapshot
+        self.save(update_fields=['selection_snapshot'])
+        return snapshot
+
+    def get_snapshot_source_ids(self):
+        """Return source IDs from snapshot (fallback to current)."""
+        snapshot = self.selection_snapshot or {}
+        source_ids = snapshot.get('source_ids')
+        if source_ids:
+            return [str(source_id) for source_id in source_ids if source_id]
+        return self._current_source_ids()
+
+    def get_snapshot_seeds(self):
+        """Return seed metadata from snapshot (fallback to current)."""
+        snapshot = self.selection_snapshot or {}
+        seeds = snapshot.get('seeds')
+        if seeds is not None:
+            return deepcopy(seeds)
+        return self._current_seeds()
+
+    def get_snapshot_seed_urls(self):
+        """Return seed URLs from snapshot (fallback to current seeds)."""
+        seeds = self.get_snapshot_seeds()
+        urls = [seed.get('url') for seed in seeds if seed.get('url')]
+        if urls:
+            return urls
+        return [seed.get('url') for seed in self._current_seeds() if seed.get('url')]
+
+    def get_snapshot_overrides(self):
+        """Return overrides from snapshot (fallback to current fields)."""
+        snapshot = self.selection_snapshot or {}
+        return {
+            'config_overrides': deepcopy(
+                snapshot.get('config_overrides') or self.config_overrides or {}
+            ),
+            'source_overrides': deepcopy(
+                snapshot.get('source_overrides') or self.source_overrides or {}
+            ),
+        }
 
     def get_validation_errors(self):
         """

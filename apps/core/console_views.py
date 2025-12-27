@@ -1432,7 +1432,7 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
         # Handle ad-hoc seeds
         seed_urls = request.POST.getlist('seed_urls', [])
         seed_labels = request.POST.getlist('seed_labels', [])
-        
+
         # Clear existing seeds and add new ones
         CrawlJobSeed.objects.filter(crawl_job=job).delete()
         for i, url in enumerate(seed_urls):
@@ -1443,7 +1443,15 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
                     url=url.strip(),
                     label=label.strip()
                 )
-        
+
+        # Persist snapshot for reruns/monitoring
+        job.persist_selection_snapshot(
+            source_ids=selected_sources,
+            seeds=list(job.job_seeds.values('url', 'label', 'status')),
+            config_overrides=job.config_overrides,
+            source_overrides=job.source_overrides,
+        )
+
         # If action is run, also launch
         action = request.POST.get('action', 'save')
         if action == 'run':
@@ -1497,7 +1505,16 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
         # Update status and launch
         job.status = 'pending'
         job.save()
-        
+
+        # Ensure snapshot exists for this launch
+        if not job.selection_snapshot:
+            job.persist_selection_snapshot(
+                source_ids=job.get_snapshot_source_ids(),
+                seeds=job.get_snapshot_seeds(),
+                config_overrides=job.get_snapshot_overrides().get('config_overrides'),
+                source_overrides=job.get_snapshot_overrides().get('source_overrides'),
+            )
+
         # Create start event
         CrawlJobEvent.objects.create(
             crawl_job=job,
@@ -1505,17 +1522,28 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
             severity='info',
             message=f'Run launched by {request.user.username}'
         )
-        
+
         # Trigger celery task
         try:
             from apps.sources.tasks import crawl_source
+            snapshot_source_ids = job.get_snapshot_source_ids()
             if job.is_multi_source:
+                # Ensure source results align with snapshot
+                existing_ids = set(job.source_results.values_list('source_id', flat=True))
+                missing_ids = set(snapshot_source_ids) - set(str(sid) for sid in existing_ids)
+                for source_id in missing_ids:
+                    CrawlJobSourceResult.objects.create(
+                        crawl_job=job,
+                        source_id=source_id,
+                        status='pending'
+                    )
                 # Launch multiple tasks - each source has a CrawlJobSourceResult
                 for result in job.source_results.all():
                     crawl_source.delay(str(result.source_id), parent_job_id=str(job.id))
             else:
                 # Single source - pass crawl_job_id (not parent_job_id) to use existing job record
-                crawl_source.delay(str(job.source_id) if job.source_id else None, crawl_job_id=str(job.id))
+                source_id = snapshot_source_ids[0] if snapshot_source_ids else job.source_id
+                crawl_source.delay(str(source_id) if source_id else None, crawl_job_id=str(job.id))
             
             job.status = 'running'
             job.started_at = timezone.now()
@@ -1591,6 +1619,16 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
             source=original.source,
         )
         new_job.save()
+
+        original_overrides = original.get_snapshot_overrides()
+
+        # Capture snapshot from original at clone time
+        new_job.persist_selection_snapshot(
+            source_ids=original.get_snapshot_source_ids(),
+            seeds=original.get_snapshot_seeds(),
+            config_overrides=original_overrides.get('config_overrides'),
+            source_overrides=original_overrides.get('source_overrides'),
+        )
         
         # Clone source results
         for result in original.source_results.all():

@@ -163,6 +163,10 @@ def crawl_source(
 
         # Get crawler with optional config overrides
         crawler_config = source.crawler_config.copy() if source.crawler_config else {}
+        # Apply selection snapshot overrides if present
+        if crawl_job and crawl_job.selection_snapshot:
+            snapshot_overrides = crawl_job.selection_snapshot.get('config_overrides') or {}
+            crawler_config.update(snapshot_overrides)
         crawler_config.update(config_overrides)
         crawler = get_crawler(source, config=crawler_config)
         
@@ -465,22 +469,38 @@ def run_crawl_job(self, job_id):
     )
     
     try:
-        # Get sources for this job
+        # Get sources for this job using snapshot to avoid drift
+        snapshot_source_ids = job.get_snapshot_source_ids()
         source_results = CrawlJobSourceResult.objects.filter(crawl_job=job).select_related('source')
-        
-        if source_results.exists():
-            # Multi-source job
+
+        if snapshot_source_ids:
+            from apps.sources.models import Source  # Local import to avoid circular issues in migrations
+            sources = list(Source.objects.filter(id__in=snapshot_source_ids))
+            if not sources:
+                raise ValueError("Snapshot references no valid sources")
+        elif source_results.exists():
             sources = [sr.source for sr in source_results]
-            logger.info(f"Job {job_id} has {len(sources)} sources")
         elif job.source:
-            # Single source job
             sources = [job.source]
-            logger.info(f"Job {job_id} has single source: {job.source.name}")
         else:
             raise ValueError("Job has no sources configured")
-        
+
+        logger.info(f"Job {job_id} has {len(sources)} sources from snapshot")
+
+        # Ensure source result rows exist for multi-source runs
+        if job.is_multi_source:
+            existing_result_ids = set(source_results.values_list('source_id', flat=True))
+            for source in sources:
+                if source.id not in existing_result_ids:
+                    CrawlJobSourceResult.objects.create(
+                        crawl_job=job,
+                        source=source,
+                        status='pending',
+                    )
+            source_results = CrawlJobSourceResult.objects.filter(crawl_job=job).select_related('source')
+
         # Get seeds for starting URLs (explicit seeds take priority)
-        seed_urls = list(job.job_seeds.values_list('url', flat=True))
+        seed_urls = job.get_snapshot_seed_urls()
         
         # If no explicit seeds, use source base URLs as starting points
         if not seed_urls:
@@ -526,8 +546,11 @@ def run_crawl_job(self, job_id):
             try:
                 # Build crawler config
                 crawler_config = source.crawler_config.copy() if source.crawler_config else {}
-                
-                # Apply job config overrides
+
+                # Apply snapshot overrides first, then runtime overrides
+                snapshot_overrides = job.get_snapshot_overrides().get('config_overrides') or {}
+                if snapshot_overrides:
+                    crawler_config.update(snapshot_overrides)
                 if job.config_overrides:
                     crawler_config.update(job.config_overrides)
                 
