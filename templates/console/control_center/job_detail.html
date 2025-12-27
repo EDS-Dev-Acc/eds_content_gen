@@ -483,19 +483,15 @@ function jobMonitor() {
             });
         },
         
-        startStaleCheck(url) {
-            this.staleCheckTimer = setInterval(() => {
+        startStaleCheck() {
+            this.staleCheckTimer = setInterval(() =>gt; {
                 const now = Date.now();
-                if (this.lastHeartbeatTs && now - this.lastHeartbeatTs > this.staleThresholdMs) {
-                    console.warn('SSE heartbeat stale, reconnecting...');
+                if (this.lastHeartbeatTs && now - this.lastHeartbeatTs tbeatTs >gt; this.staleThresholdMs) {
+                    console.warn('SSE heartbeat stale, forcing connection close...');
                     if (this.eventSource) {
-                        this.eventSource.close();
-                        this.eventSource = null;
+                        this.eventSource.close(); // This will trigger the 'onerror' handler
                     }
-                    this.connected = false;
-                    clearInterval(this.staleCheckTimer);
-                    this.staleCheckTimer = null;
-                    this.reconnectTimer = setTimeout(() => this.connect(url), 500);
+                    // The stale check timer will be cleared in the connect() method upon reconnection
                 }
             }, 3000);
         },
