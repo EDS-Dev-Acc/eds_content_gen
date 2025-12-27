@@ -77,13 +77,14 @@ def _classify_error(exc):
     return 'UNKNOWN_ERROR', exc_msg
 
 
-def _get_retry_decision(error_code, retries):
+def _get_retry_decision(error_code, retries, task_max_retries):
     """
     Determine retry allowance and delay based on error code.
 
     Args:
         error_code: normalized error code
         retries: current retry count from Celery (0-based)
+        task_max_retries: The max_retries value set on the task.
 
     Returns:
         tuple of (should_retry: bool, max_attempts: int, countdown_seconds: int | None)
@@ -92,7 +93,8 @@ def _get_retry_decision(error_code, retries):
     max_attempts = policy['max_attempts']
     current_attempt = retries + 1  # include the failed attempt
 
-    if error_code in NON_RETRIABLE_ERRORS or current_attempt >= max_attempts:
+    # Celery's retries are 0-indexed. A task with max_retries=8 can be retried 8 times (retries will be 0 through 7).
+    if error_code in NON_RETRIABLE_ERRORS or current_attempt >gt; max_attempts or retries >=t;= task_max_retries:
         return False, max_attempts, None
 
     backoff = policy['backoff'] * (2 ** retries)
