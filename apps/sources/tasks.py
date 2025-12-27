@@ -81,6 +81,7 @@ def crawl_source(
     """
     from apps.sources.models import Source, CrawlJob, CrawlJobSourceResult
     from apps.sources.crawlers import get_crawler
+    from apps.sources.crawlers.exceptions import CrawlCancelled
 
     # Set up logging context with request_id if provided
     log_extra = {'request_id': request_id} if request_id else {}
@@ -90,14 +91,39 @@ def crawl_source(
     source_result = None
 
     def _check_parent_cancelled():
-        """Helper to check if parent job was cancelled."""
+        """Helper to check if parent job was cancelled/paused."""
         if not parent_job_id:
             return False
         try:
             parent = CrawlJob.objects.only('status').get(id=parent_job_id)
-            return parent.status == 'cancelled'
+            return parent.status in ('cancelled', 'paused')
         except CrawlJob.DoesNotExist:
             return True  # Parent gone, treat as cancelled
+
+    def _make_cancel_checker(job_id=None, parent_id=None):
+        """Create a cancellation checker callable for crawlers."""
+        def _check():
+            # Check child job first (single-source or per-source job)
+            if job_id:
+                try:
+                    job_status = CrawlJob.objects.only('status').get(id=job_id).status
+                    if job_status in ('paused', 'cancelled', 'stopped'):
+                        return f"Job {job_status}"
+                except CrawlJob.DoesNotExist:
+                    return "Job missing"
+
+            # Check parent (multi-source) status
+            if parent_id:
+                try:
+                    parent_status = CrawlJob.objects.only('status').get(id=parent_id).status
+                    if parent_status in ('paused', 'cancelled', 'stopped'):
+                        return f"Parent {parent_status}"
+                except CrawlJob.DoesNotExist:
+                    return "Parent missing"
+
+            return None
+
+        return _check
 
     try:
         # Get the source
@@ -106,18 +132,18 @@ def crawl_source(
 
         # Check for cancellation before starting
         if _check_parent_cancelled():
-            logger.info(f"Parent job {parent_job_id} cancelled, skipping {source.name}", extra=log_extra)
+            logger.info(f"Parent job {parent_job_id} cancelled/paused, skipping {source.name}", extra=log_extra)
             source_result = CrawlJobSourceResult.objects.filter(
                 crawl_job_id=parent_job_id,
                 source=source
             ).first()
             if source_result:
                 source_result.status = 'skipped'
-                source_result.error_message = 'Parent job cancelled'
+                source_result.error_message = 'Parent job cancelled/paused'
                 source_result.completed_at = timezone.now()
                 source_result.save()
                 _finalize_parent_job(parent_job_id)
-            return {'success': False, 'status': 'skipped', 'reason': 'Parent job cancelled'}
+            return {'success': False, 'status': 'skipped', 'reason': 'Parent job cancelled/paused'}
 
         # Handle job tracking
         if crawl_job_id:
@@ -165,8 +191,14 @@ def crawl_source(
         crawler_config = source.crawler_config.copy() if source.crawler_config else {}
         crawler_config.update(config_overrides)
         crawler = get_crawler(source, config=crawler_config)
+        crawler.set_cancel_callback(
+            _make_cancel_checker(
+                job_id=str(crawl_job.id) if crawl_job else crawl_job_id,
+                parent_id=parent_job_id,
+            )
+        )
         
-        # Execute crawl (TODO: Add periodic cancellation check during crawl)
+        # Execute crawl with cancellation awareness
         results = crawler.crawl()
 
         # Re-check for cancellation after crawl completes (parent may have been cancelled mid-crawl)
@@ -222,6 +254,37 @@ def crawl_source(
         return {
             'success': False,
             'error': 'Source not found'
+        }
+
+    except CrawlCancelled as cancel_exc:
+        reason = str(cancel_exc)
+        logger.info("Crawl cancelled for source %s: %s", source_id, reason, extra=log_extra)
+
+        # Update crawl job as cancelled
+        if crawl_job:
+            try:
+                crawl_job.status = 'cancelled'
+                crawl_job.completed_at = timezone.now()
+                crawl_job.error_message = reason
+                crawl_job.save()
+            except Exception:
+                pass
+
+        # Update source result if multi-source
+        if source_result:
+            try:
+                source_result.status = 'skipped'
+                source_result.completed_at = timezone.now()
+                source_result.error_message = reason
+                source_result.save()
+                _finalize_parent_job(parent_job_id)
+            except Exception:
+                pass
+
+        return {
+            'success': False,
+            'status': 'cancelled',
+            'reason': reason,
         }
 
     except Exception as exc:
