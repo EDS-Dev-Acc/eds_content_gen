@@ -9,7 +9,9 @@ from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
+from django.core.exceptions import ValidationError
 from django.core.paginator import Paginator
+from django.core.validators import URLValidator
 from django.db import connection, models
 from django.db.models import Sum, Count, Avg, Q, Case, When
 from django.http import HttpResponse
@@ -21,11 +23,14 @@ from datetime import timedelta
 import json
 import shutil
 import time
+from types import SimpleNamespace
+from urllib.parse import urlparse, urlunparse
 
 from apps.sources.models import Source, CrawlJob
 from apps.seeds.models import Seed
 from apps.articles.models import Article
 from apps.core.models import LLMSettings, LLMUsageLog
+from apps.core.security import URLNormalizer
 
 # Import celery beat models for schedules
 try:
@@ -315,38 +320,112 @@ class RunsListPartial(LoginRequiredMixin, View):
 class SourceCreateView(LoginRequiredMixin, View):
     """Create a new source via HTMX POST."""
     login_url = '/console/login/'
+    url_validator = URLValidator(schemes=['http', 'https'])
+
+    def _normalize_domain(self, hostname: str) -> str:
+        """Normalize domain for uniqueness checks."""
+        domain = (hostname or '').lower().strip().rstrip('.')
+        if domain.startswith('www.'):
+            domain = domain[4:]
+        return domain.encode('idna').decode('ascii')
+
+    def _apply_normalized_domain(self, normalized_domain: str, parsed_url):
+        """Rebuild the normalized URL with the normalized domain value."""
+        netloc = normalized_domain
+        if parsed_url.port:
+            netloc = f"{normalized_domain}:{parsed_url.port}"
+        if parsed_url.username:
+            userinfo = parsed_url.username
+            if parsed_url.password:
+                userinfo += f":{parsed_url.password}"
+            netloc = f"{userinfo}@{netloc}"
+
+        path = parsed_url.path or '/'
+        query = parsed_url.query or ''
+        return urlunparse((parsed_url.scheme, netloc, path, '', query, ''))
+
+    def _render_errors(self, request, non_field_errors=None, field_errors=None, status=400):
+        """Render error block and retarget to modal error container."""
+        errors = SimpleNamespace(
+            non_field_errors=non_field_errors or []
+        )
+        response = render(
+            request,
+            'console/partials/form_errors.html',
+            {
+                'errors': errors,
+                'field_errors': field_errors or {},
+            },
+            status=status,
+        )
+        response['HX-Retarget'] = '#add-source-errors'
+        response['HX-Reswap'] = 'innerHTML'
+        return response
     
     def post(self, request):
-        from urllib.parse import urlparse
-        
         name = request.POST.get('name', '').strip()
         url = request.POST.get('url', '').strip()
         source_type = request.POST.get('source_type', 'news_site')
-        
-        if not name or not url:
-            return HttpResponse(
-                '<div class="text-red-600 p-4">Name and URL are required.</div>',
-                status=400
+
+        field_errors = {}
+        non_field_errors = []
+        normalized_url = None
+        normalized_domain = None
+
+        if not name:
+            field_errors['Name'] = ['Please provide a name for the source.']
+
+        if not url:
+            field_errors['URL'] = ['Please provide a URL for the source.']
+        else:
+            try:
+                self.url_validator(url)
+            except ValidationError:
+                field_errors['URL'] = [
+                    'Enter a valid URL starting with http:// or https://.'
+                ]
+            else:
+                normalized_url = URLNormalizer.normalize(url)
+                parsed = urlparse(normalized_url)
+                if not parsed.scheme or not parsed.hostname:
+                    field_errors['URL'] = [
+                        'The URL must include a valid domain.'
+                    ]
+                else:
+                    try:
+                        normalized_domain = self._normalize_domain(parsed.hostname)
+                    except UnicodeError:
+                        field_errors['URL'] = [
+                            'The domain contains invalid characters.'
+                        ]
+                    else:
+                        if not normalized_domain:
+                            field_errors['URL'] = [
+                                'The URL must include a valid domain.'
+                            ]
+                        elif Source.objects.filter(domain=normalized_domain).exists():
+                            field_errors['URL'] = [
+                                f"A source with domain '{normalized_domain}' already exists."
+                            ]
+                        else:
+                            normalized_url = self._apply_normalized_domain(
+                                normalized_domain,
+                                parsed,
+                            )
+
+        if field_errors or non_field_errors:
+            return self._render_errors(
+                request,
+                non_field_errors=non_field_errors,
+                field_errors=field_errors,
+                status=400,
             )
-        
-        # Extract domain from URL
-        parsed = urlparse(url)
-        domain = parsed.netloc.lower()
-        if domain.startswith('www.'):
-            domain = domain[4:]
-        
-        # Check for duplicate domain
-        if Source.objects.filter(domain=domain).exists():
-            return HttpResponse(
-                f'<div class="text-red-600 p-4">A source with domain {domain} already exists.</div>',
-                status=400
-            )
-        
+
         # Create the source
         Source.objects.create(
             name=name,
-            url=url,
-            domain=domain,
+            url=normalized_url,
+            domain=normalized_domain,
             source_type=source_type,
             status='active'
         )
