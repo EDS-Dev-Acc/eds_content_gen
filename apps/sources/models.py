@@ -989,7 +989,7 @@ class CrawlJob(BaseModel):
         """Return source IDs from snapshot (fallback to current)."""
         snapshot = self.selection_snapshot or {}
         source_ids = snapshot.get('source_ids')
-        if source_ids:
+        if source_ids is not None:
             return [str(source_id) for source_id in source_ids if source_id]
         return self._current_source_ids()
 
