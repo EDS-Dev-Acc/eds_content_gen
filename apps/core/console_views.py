@@ -12,11 +12,12 @@ from django.contrib import messages
 from django.core.paginator import Paginator
 from django.db import connection, models
 from django.db.models import Sum, Count, Avg, Q, Case, When
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseBadRequest, HttpResponseForbidden
 from django.shortcuts import render, redirect, get_object_or_404
 from django.utils import timezone
+from django.utils.decorators import method_decorator
 from django.views import View
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_POST
 from datetime import timedelta
 import json
 import shutil
@@ -26,6 +27,7 @@ from apps.sources.models import Source, CrawlJob
 from apps.seeds.models import Seed
 from apps.articles.models import Article
 from apps.core.models import LLMSettings, LLMUsageLog
+from apps.core.permissions import has_role
 
 # Import celery beat models for schedules
 try:
@@ -1537,12 +1539,19 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
         return redirect('console:control_center_detail', job_id=job.id)
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterCloneView(LoginRequiredMixin, View):
     """Clone job configuration to new draft."""
     login_url = '/console/login/'
     
     def post(self, request, job_id):
         original = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            messages.error(request, 'Operator access is required to clone jobs.')
+            if request.headers.get('HX-Request'):
+                return HttpResponseForbidden('Operator access is required to clone jobs.')
+            return redirect('console:control_center_detail', job_id=job_id)
         
         # Create new job with cloned config
         new_job = CrawlJob(
@@ -1615,12 +1624,17 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
         return redirect('console:control_center_edit', job_id=new_job.id)
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterPauseView(LoginRequiredMixin, View):
     """Pause a running job."""
     login_url = '/console/login/'
     
     def post(self, request, job_id):
         job = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            messages.error(request, 'Operator access is required to pause jobs.')
+            return HttpResponseForbidden('Operator access is required to pause jobs.')
         
         if job.is_pausable:
             job.status = 'paused'
@@ -1633,18 +1647,26 @@ class ControlCenterPauseView(LoginRequiredMixin, View):
                 severity='info',
                 message=f'Run paused by {request.user.username}'
             )
+        else:
+            messages.error(request, 'Job cannot be paused from the current state.')
+            return HttpResponseBadRequest('Job cannot be paused from the current state.')
         
         if request.headers.get('HX-Request'):
             return render(request, 'console/control_center/partials/job_controls.html', {'job': job})
         return redirect('console:control_center_detail', job_id=job.id)
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterResumeView(LoginRequiredMixin, View):
     """Resume a paused job."""
     login_url = '/console/login/'
     
     def post(self, request, job_id):
         job = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            messages.error(request, 'Operator access is required to resume jobs.')
+            return HttpResponseForbidden('Operator access is required to resume jobs.')
         
         if job.is_resumable:
             job.status = 'running'
@@ -1669,18 +1691,26 @@ class ControlCenterResumeView(LoginRequiredMixin, View):
                     crawl_source.delay(str(job.source_id), crawl_job_id=str(job.id))
             except Exception:
                 pass
+        else:
+            messages.error(request, 'Job cannot be resumed from the current state.')
+            return HttpResponseBadRequest('Job cannot be resumed from the current state.')
         
         if request.headers.get('HX-Request'):
             return render(request, 'console/control_center/partials/job_controls.html', {'job': job})
         return redirect('console:control_center_detail', job_id=job.id)
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterStopView(LoginRequiredMixin, View):
     """Stop/cancel a job."""
     login_url = '/console/login/'
     
     def post(self, request, job_id):
         job = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            messages.error(request, 'Operator access is required to stop jobs.')
+            return HttpResponseForbidden('Operator access is required to stop jobs.')
         
         if job.is_stoppable:
             job.status = 'cancelled'
@@ -1701,6 +1731,9 @@ class ControlCenterStopView(LoginRequiredMixin, View):
                     AsyncResult(job.task_id).revoke(terminate=True)
                 except Exception:
                     pass
+        else:
+            messages.error(request, 'Job cannot be stopped from the current state.')
+            return HttpResponseBadRequest('Job cannot be stopped from the current state.')
         
         if request.headers.get('HX-Request'):
             return render(request, 'console/control_center/partials/job_controls.html', {'job': job})
@@ -2137,12 +2170,19 @@ class ControlCenterSSEView(LoginRequiredMixin, View):
         return response
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterCloneView(LoginRequiredMixin, View):
     """Clone an existing job as a new draft."""
     login_url = '/console/login/'
     
     def post(self, request, job_id):
         original = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            messages.error(request, 'Operator access is required to clone jobs.')
+            if request.headers.get('HX-Request'):
+                return HttpResponseForbidden('Operator access is required to clone jobs.')
+            return redirect('console:control_center_detail', job_id=job_id)
         
         # Create clone
         clone = CrawlJob.objects.create(
@@ -2216,17 +2256,33 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
         return redirect('console:control_center_edit', job_id=clone.id)
 
 
+@method_decorator(require_POST, name='dispatch')
 class ControlCenterJobControlView(LoginRequiredMixin, View):
     """Handle job control actions: start, pause, resume, stop."""
     login_url = '/console/login/'
+
+    def _permission_denied(self, request, job):
+        message = 'Operator access is required to control jobs.'
+        messages.error(request, message)
+        if request.headers.get('HX-Request'):
+            return HttpResponseForbidden(message)
+        return redirect('console:control_center_detail', job_id=job.id)
+
+    def _invalid_transition(self, request, job, message):
+        messages.error(request, message)
+        if request.headers.get('HX-Request'):
+            return HttpResponseBadRequest(message)
+        return redirect('console:control_center_detail', job_id=job.id)
     
     def post(self, request, job_id, action):
         job = get_object_or_404(CrawlJob, id=job_id)
+
+        if not has_role(request.user, 'operator'):
+            return self._permission_denied(request, job)
         
         if action == 'start':
             if job.status not in ['draft', 'queued']:
-                messages.error(request, 'Job cannot be started from current state')
-                return redirect('console:control_center_detail', job_id=job.id)
+                return self._invalid_transition(request, job, 'Job cannot be started from current state')
             
             job.status = 'queued'
             job.save()
@@ -2239,8 +2295,7 @@ class ControlCenterJobControlView(LoginRequiredMixin, View):
             
         elif action == 'pause':
             if job.status != 'running':
-                messages.error(request, 'Only running jobs can be paused')
-                return redirect('console:control_center_detail', job_id=job.id)
+                return self._invalid_transition(request, job, 'Only running jobs can be paused')
             
             job.status = 'paused'
             job.paused_at = timezone.now()
@@ -2259,8 +2314,7 @@ class ControlCenterJobControlView(LoginRequiredMixin, View):
             
         elif action == 'resume':
             if job.status != 'paused':
-                messages.error(request, 'Only paused jobs can be resumed')
-                return redirect('console:control_center_detail', job_id=job.id)
+                return self._invalid_transition(request, job, 'Only paused jobs can be resumed')
             
             job.status = 'running'
             job.paused_at = None
@@ -2279,8 +2333,7 @@ class ControlCenterJobControlView(LoginRequiredMixin, View):
             
         elif action == 'stop':
             if job.status not in ['running', 'paused', 'queued']:
-                messages.error(request, 'Job cannot be stopped from current state')
-                return redirect('console:control_center_detail', job_id=job.id)
+                return self._invalid_transition(request, job, 'Job cannot be stopped from current state')
             
             job.status = 'stopped'
             job.finished_at = timezone.now()
@@ -2298,7 +2351,7 @@ class ControlCenterJobControlView(LoginRequiredMixin, View):
             messages.warning(request, f'Job "{job.name}" stopped')
         
         else:
-            messages.error(request, f'Unknown action: {action}')
+            return self._invalid_transition(request, job, f'Unknown action: {action}')
         
         # Return HTMX partial or redirect
         if request.headers.get('HX-Request'):
