@@ -32,7 +32,7 @@ from .serializers import (
     ScheduleRunNowSerializer,
     ScheduleBulkActionSerializer,
 )
-from .tasks import crawl_source
+from .tasks import crawl_source, orchestrate_crawl_children
 
 # Throttling
 from apps.core.throttling import (
@@ -252,7 +252,7 @@ class RunViewSet(viewsets.ModelViewSet):
             # Create parent run for multi-source
             crawl_job = CrawlJob.objects.create(
                 source=None,
-                status='pending',
+                status='queued',
                 priority=priority,
                 triggered_by='api',
                 triggered_by_user=request.user,
@@ -268,21 +268,18 @@ class RunViewSet(viewsets.ModelViewSet):
                     status='pending',
                 )
             
-            # Queue individual crawl tasks with request_id propagation
+            # Queue orchestrator to dispatch child tasks with rate limiting
             try:
-                headers = celery_request_id_headers()
-                for source in sources:
-                    crawl_source.apply_async(
-                        args=[str(source.id)],
-                        kwargs={
-                            'parent_job_id': str(crawl_job.id),
-                            'config_overrides': config_overrides,
-                        },
-                        headers=headers,
-                    )
-                crawl_job.status = 'running'
+                orchestrate_crawl_children.apply_async(
+                    args=[str(crawl_job.id)],
+                    kwargs={
+                        'max_concurrency': crawl_job.max_concurrent_global,
+                        'rate_delay_ms': crawl_job.rate_delay_ms,
+                    },
+                    headers=celery_request_id_headers(),
+                )
                 crawl_job.started_at = timezone.now()
-                crawl_job.save()
+                crawl_job.save(update_fields=['started_at', 'updated_at'])
             except Exception as e:
                 logger.warning(f"Could not queue tasks: {e}")
                 crawl_job.status = 'pending'
@@ -365,7 +362,7 @@ class RunStartView(APIView):
             # Create parent run for multi-source
             crawl_job = CrawlJob.objects.create(
                 source=None,
-                status='pending',
+                status='queued',
                 priority=priority,
                 triggered_by='api',
                 triggered_by_user=request.user,
@@ -383,23 +380,18 @@ class RunStartView(APIView):
                 )
                 source_results.append(result)
             
-            # Queue individual crawl tasks with request_id propagation
+            # Queue orchestrator to dispatch child tasks with request_id propagation
             try:
-                headers = celery_request_id_headers()
-                for source in sources:
-                    task = crawl_source.apply_async(
-                        args=[str(source.id)],
-                        kwargs={
-                            'parent_job_id': str(crawl_job.id),
-                            'config_overrides': config_overrides,
-                        },
-                        headers=headers,
-                    )
-                
-                # Update parent job status
-                crawl_job.status = 'running'
+                orchestrate_crawl_children.apply_async(
+                    args=[str(crawl_job.id)],
+                    kwargs={
+                        'max_concurrency': crawl_job.max_concurrent_global,
+                        'rate_delay_ms': crawl_job.rate_delay_ms,
+                    },
+                    headers=celery_request_id_headers(),
+                )
                 crawl_job.started_at = timezone.now()
-                crawl_job.save()
+                crawl_job.save(update_fields=['started_at', 'updated_at'])
             except Exception as e:
                 logger.warning(f"Could not queue tasks (broker unavailable?): {e}")
                 crawl_job.status = 'pending'

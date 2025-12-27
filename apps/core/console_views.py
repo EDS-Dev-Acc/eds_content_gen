@@ -1168,6 +1168,10 @@ class ControlCenterDetailView(LoginRequiredMixin, View):
         
         # Get source results
         source_results = job.source_results.select_related('source').order_by('source__name')
+
+        # Child status counts for transparency
+        status_counts = source_results.values('status').annotate(count=Count('id'))
+        child_status_map = {row['status']: row['count'] for row in status_counts}
         
         # Get job seeds
         job_seeds = job.job_seeds.all()
@@ -1180,6 +1184,7 @@ class ControlCenterDetailView(LoginRequiredMixin, View):
             'source_results': source_results,
             'job_seeds': job_seeds,
             'events': events,
+            'child_status_map': child_status_map,
         })
 
 
@@ -1495,8 +1500,8 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
             ''')
         
         # Update status and launch
-        job.status = 'pending'
-        job.save()
+        job.status = 'queued' if job.is_multi_source else 'pending'
+        job.save(update_fields=['status', 'updated_at'])
         
         # Create start event
         CrawlJobEvent.objects.create(
@@ -1508,18 +1513,24 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
         
         # Trigger celery task
         try:
-            from apps.sources.tasks import crawl_source
+            from apps.sources.tasks import crawl_source, orchestrate_crawl_children
             if job.is_multi_source:
-                # Launch multiple tasks - each source has a CrawlJobSourceResult
-                for result in job.source_results.all():
-                    crawl_source.delay(str(result.source_id), parent_job_id=str(job.id))
+                # Launch orchestrator to respect concurrency and rate limits
+                orchestrate_crawl_children.apply_async(
+                    args=[str(job.id)],
+                    kwargs={
+                        'max_concurrency': job.max_concurrent_global,
+                        'rate_delay_ms': job.rate_delay_ms,
+                    },
+                )
+                job.started_at = timezone.now()
+                job.save(update_fields=['started_at', 'updated_at'])
             else:
                 # Single source - pass crawl_job_id (not parent_job_id) to use existing job record
                 crawl_source.delay(str(job.source_id) if job.source_id else None, crawl_job_id=str(job.id))
-            
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
+                job.status = 'running'
+                job.started_at = timezone.now()
+                job.save(update_fields=['status', 'started_at', 'updated_at'])
         except Exception as e:
             CrawlJobEvent.objects.create(
                 crawl_job=job,
@@ -1660,10 +1671,15 @@ class ControlCenterResumeView(LoginRequiredMixin, View):
             
             # Re-trigger any pending work
             try:
-                from apps.sources.tasks import crawl_source
+                from apps.sources.tasks import crawl_source, orchestrate_crawl_children
                 if job.is_multi_source:
-                    for result in job.source_results.filter(status='pending'):
-                        crawl_source.delay(str(result.source_id), parent_job_id=str(job.id))
+                    orchestrate_crawl_children.apply_async(
+                        args=[str(job.id)],
+                        kwargs={
+                            'max_concurrency': job.max_concurrent_global,
+                            'rate_delay_ms': job.rate_delay_ms,
+                        },
+                    )
                 elif job.source:
                     # Single source - use crawl_job_id
                     crawl_source.delay(str(job.source_id), crawl_job_id=str(job.id))
