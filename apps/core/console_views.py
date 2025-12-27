@@ -1543,38 +1543,26 @@ class ControlCenterSaveView(LoginRequiredMixin, View):
                 </div>
             ''')
         
-        # Update status and launch
-        job.status = 'pending'
+        # Update status and queue orchestrated task
+        job.status = 'queued'
         job.save()
-        
-        # Create start event
+
         CrawlJobEvent.objects.create(
             crawl_job=job,
             event_type='start',
             severity='info',
-            message=f'Run launched by {request.user.username}'
+            message=f'Run queued by {request.user.username}'
         )
-        
-        # Trigger celery task
+
         try:
-            from apps.sources.tasks import crawl_source
-            if job.is_multi_source:
-                # Launch multiple tasks - each source has a CrawlJobSourceResult
-                for result in job.source_results.all():
-                    crawl_source.delay(str(result.source_id), parent_job_id=str(job.id))
-            else:
-                # Single source - pass crawl_job_id (not parent_job_id) to use existing job record
-                crawl_source.delay(str(job.source_id) if job.source_id else None, crawl_job_id=str(job.id))
-            
-            job.status = 'running'
-            job.started_at = timezone.now()
-            job.save()
+            from apps.sources.tasks import run_crawl_job
+            run_crawl_job.delay(str(job.id))
         except Exception as e:
             CrawlJobEvent.objects.create(
                 crawl_job=job,
                 event_type='error',
                 severity='error',
-                message=f'Failed to launch: {str(e)}'
+                message=f'Failed to queue run: {str(e)}'
             )
         
         # Redirect to detail view
