@@ -9,6 +9,7 @@ from django.contrib.auth import login, logout, authenticate
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
+from django.core.cache import cache
 from django.core.paginator import Paginator
 from django.db import connection, models
 from django.db.models import Sum, Count, Avg, Q, Case, When
@@ -74,6 +75,81 @@ class ConsoleLogoutView(View):
 # Dashboard View
 # =============================================================================
 
+
+def get_dashboard_stats():
+    """
+    Centralized data provider for dashboard metrics.
+    
+    Combines aggregates into minimal queries and caches the result so HTMX
+    partials share a single computation path.
+    """
+    cache_key = 'console_dashboard_stats'
+    cached_stats = cache.get(cache_key)
+    if cached_stats is not None:
+        return cached_stats
+    
+    today = timezone.now().date()
+    month_start = today.replace(day=1)
+    
+    default_stats = {
+        'total_articles': 0,
+        'articles_today': 0,
+        'active_sources': 0,
+        'total_sources': 0,
+        'running_crawls': 0,
+        'pending_crawls': 0,
+        'runs_today': 0,
+        'budget_used': 0.0,
+        'budget_limit': 0.0,
+        'budget_percent': 0.0,
+        'llm_cost_today': 0.0,
+    }
+    
+    try:
+        article_stats = Article.objects.aggregate(
+            total=Count('id'),
+            today=Count('id', filter=Q(created_at__date=today)),
+        )
+        source_stats = Source.objects.aggregate(
+            total=Count('id'),
+            active=Count('id', filter=Q(status='active')),
+        )
+        crawl_stats = CrawlJob.objects.aggregate(
+            running=Count('id', filter=Q(status='running')),
+            pending=Count('id', filter=Q(status='pending')),
+            runs_today=Count('id', filter=Q(started_at__date=today)),
+        )
+        usage_stats = LLMUsageLog.objects.aggregate(
+            month_total=Sum('cost_usd', filter=Q(created_at__gte=month_start)),
+            today_total=Sum('cost_usd', filter=Q(created_at__date=today)),
+        )
+        
+        settings = LLMSettings.objects.first()
+        budget_limit = float(settings.monthly_budget_usd) if settings else 0.0
+        budget_used = float(usage_stats['month_total'] or 0.0)
+        
+        budget_percent = (budget_used / budget_limit * 100) if budget_limit > 0 else 0.0
+        
+        stats = {
+            'total_articles': article_stats['total'] or 0,
+            'articles_today': article_stats['today'] or 0,
+            'active_sources': source_stats['active'] or 0,
+            'total_sources': source_stats['total'] or 0,
+            'running_crawls': crawl_stats['running'] or 0,
+            'pending_crawls': crawl_stats['pending'] or 0,
+            'runs_today': crawl_stats['runs_today'] or 0,
+            'budget_used': budget_used,
+            'budget_limit': budget_limit,
+            'budget_percent': min(budget_percent, 100),
+            'llm_cost_today': float(usage_stats['today_total'] or 0.0),
+        }
+    except Exception:
+        stats = default_stats
+    
+    cache.set(cache_key, stats, 30)
+    return stats
+
+
 class DashboardView(LoginRequiredMixin, View):
     """Main dashboard view."""
     login_url = '/console/login/'
@@ -87,8 +163,8 @@ class StatSourcesView(LoginRequiredMixin, View):
     login_url = '/console/login/'
     
     def get(self, request):
-        count = Source.objects.filter(status='active').count()
-        return HttpResponse(str(count))
+        stats = get_dashboard_stats()
+        return HttpResponse(str(stats.get('active_sources', 0)))
 
 
 class StatArticlesView(LoginRequiredMixin, View):
@@ -96,8 +172,8 @@ class StatArticlesView(LoginRequiredMixin, View):
     login_url = '/console/login/'
     
     def get(self, request):
-        count = Article.objects.count()
-        return HttpResponse(f"{count:,}")
+        stats = get_dashboard_stats()
+        return HttpResponse(f"{stats.get('total_articles', 0):,}")
 
 
 class StatRunsTodayView(LoginRequiredMixin, View):
@@ -105,9 +181,8 @@ class StatRunsTodayView(LoginRequiredMixin, View):
     login_url = '/console/login/'
     
     def get(self, request):
-        today = timezone.now().date()
-        count = CrawlJob.objects.filter(started_at__date=today).count()
-        return HttpResponse(str(count))
+        stats = get_dashboard_stats()
+        return HttpResponse(str(stats.get('runs_today', 0)))
 
 
 class StatLLMCostView(LoginRequiredMixin, View):
@@ -115,11 +190,8 @@ class StatLLMCostView(LoginRequiredMixin, View):
     login_url = '/console/login/'
     
     def get(self, request):
-        today = timezone.now().date()
-        cost = LLMUsageLog.objects.filter(
-            created_at__date=today
-        ).aggregate(total=Sum('cost_usd'))['total'] or 0
-        return HttpResponse(f"${cost:.2f}")
+        stats = get_dashboard_stats()
+        return HttpResponse(f"${stats.get('llm_cost_today', 0.0):.2f}")
 
 
 class DashboardStatsPartial(LoginRequiredMixin, View):
@@ -127,33 +199,7 @@ class DashboardStatsPartial(LoginRequiredMixin, View):
     login_url = '/console/login/'
     
     def get(self, request):
-        today = timezone.now().date()
-        
-        # Get LLM budget info
-        settings = LLMSettings.objects.first()
-        budget_limit = float(settings.monthly_budget_usd) if settings else 0
-        
-        # Calculate budget used this month
-        month_start = today.replace(day=1)
-        budget_used = LLMUsageLog.objects.filter(
-            created_at__gte=month_start
-        ).aggregate(total=Sum('cost_usd'))['total'] or 0
-        budget_used = float(budget_used)
-        
-        budget_percent = (budget_used / budget_limit * 100) if budget_limit > 0 else 0
-        
-        stats = {
-            'total_articles': Article.objects.count(),
-            'articles_today': Article.objects.filter(created_at__date=today).count(),
-            'active_sources': Source.objects.filter(status='active').count(),
-            'total_sources': Source.objects.count(),
-            'running_crawls': CrawlJob.objects.filter(status='running').count(),
-            'pending_crawls': CrawlJob.objects.filter(status='pending').count(),
-            'budget_used': budget_used,
-            'budget_limit': budget_limit,
-            'budget_percent': min(budget_percent, 100),
-        }
-        
+        stats = get_dashboard_stats()
         return render(request, 'console/partials/dashboard_stats.html', {'stats': stats})
 
 
