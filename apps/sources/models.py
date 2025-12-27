@@ -1004,10 +1004,7 @@ class CrawlJob(BaseModel):
     def get_snapshot_seed_urls(self):
         """Return seed URLs from snapshot (fallback to current seeds)."""
         seeds = self.get_snapshot_seeds()
-        urls = [seed.get('url') for seed in seeds if seed.get('url')]
-        if urls:
-            return urls
-        return [seed.get('url') for seed in self._current_seeds() if seed.get('url')]
+        return [seed.get('url') for seed in seeds if seed.get('url')]
 
     def get_snapshot_overrides(self):
         """Return overrides from snapshot (fallback to current fields)."""
