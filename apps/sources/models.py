@@ -1014,10 +1014,10 @@ class CrawlJob(BaseModel):
         snapshot = self.selection_snapshot or {}
         return {
             'config_overrides': deepcopy(
-                snapshot.get('config_overrides') or self.config_overrides or {}
+                snapshot.get('config_overrides') if 'config_overrides' in snapshot else (self.config_overrides or {})
             ),
             'source_overrides': deepcopy(
-                snapshot.get('source_overrides') or self.source_overrides or {}
+                snapshot.get('source_overrides') if 'source_overrides' in snapshot else (self.source_overrides or {})
             ),
         }
 
