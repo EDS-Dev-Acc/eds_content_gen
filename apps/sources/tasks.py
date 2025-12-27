@@ -8,8 +8,30 @@ Phase 14.1: Added error taxonomy for normalized error codes.
 from celery import shared_task
 from django.utils import timezone
 import logging
+import random
 
 logger = logging.getLogger(__name__)
+
+
+RETRY_POLICIES = {
+    'NETWORK_TIMEOUT': {'max_attempts': 5, 'backoff': 60, 'jitter': 30},
+    'NETWORK_REFUSED': {'max_attempts': 4, 'backoff': 90, 'jitter': 30},
+    'DNS_ERROR': {'max_attempts': 4, 'backoff': 120, 'jitter': 60},
+    'SSL_ERROR': {'max_attempts': 3, 'backoff': 120, 'jitter': 60},
+    'RATE_LIMITED': {'max_attempts': 5, 'backoff': 120, 'jitter': 60},
+    'HTTP_SERVER_ERROR': {'max_attempts': 4, 'backoff': 90, 'jitter': 45},
+    'UNKNOWN_ERROR': {'max_attempts': 3, 'backoff': 60, 'jitter': 30},
+}
+
+NON_RETRIABLE_ERRORS = {
+    'HTTP_FORBIDDEN',
+    'HTTP_NOT_FOUND',
+    'ROBOTS_BLOCKED',
+    'PARSE_ERROR',
+    'ENCODING_ERROR',
+}
+
+DEFAULT_RETRY_POLICY = {'max_attempts': 3, 'backoff': 60, 'jitter': 30}
 
 
 def _classify_error(exc):
@@ -55,7 +77,31 @@ def _classify_error(exc):
     return 'UNKNOWN_ERROR', exc_msg
 
 
-@shared_task(bind=True, max_retries=3)
+def _get_retry_decision(error_code, retries):
+    """
+    Determine retry allowance and delay based on error code.
+
+    Args:
+        error_code: normalized error code
+        retries: current retry count from Celery (0-based)
+
+    Returns:
+        tuple of (should_retry: bool, max_attempts: int, countdown_seconds: int | None)
+    """
+    policy = RETRY_POLICIES.get(error_code, DEFAULT_RETRY_POLICY)
+    max_attempts = policy['max_attempts']
+    current_attempt = retries + 1  # include the failed attempt
+
+    if error_code in NON_RETRIABLE_ERRORS or current_attempt >= max_attempts:
+        return False, max_attempts, None
+
+    backoff = policy['backoff'] * (2 ** retries)
+    jitter = random.uniform(0, policy.get('jitter', 0))
+    countdown = int(backoff + jitter)
+    return True, max_attempts, countdown
+
+
+@shared_task(bind=True, max_retries=8)
 def crawl_source(
     self, 
     source_id, 
@@ -252,11 +298,23 @@ def crawl_source(
             except:
                 pass
 
-        # Retry with exponential backoff
-        raise self.retry(
-            exc=exc,
-            countdown=60 * (2 ** self.request.retries)
+        should_retry, max_attempts, countdown = _get_retry_decision(error_code, self.request.retries)
+        attempt_number = self.request.retries + 1
+
+        if should_retry and countdown is not None:
+            logger.info(
+                f"Retrying crawl_source for {source_id} in {countdown}s "
+                f"(attempt {attempt_number + 1}/{max_attempts}, error_code={error_code})",
+                extra=log_extra,
+            )
+            raise self.retry(exc=exc, countdown=countdown)
+
+        logger.info(
+            f"Not retrying crawl_source for {source_id} "
+            f"(attempt {attempt_number}/{max_attempts}, error_code={error_code})",
+            extra=log_extra,
         )
+        raise
 
 
 def _finalize_parent_job(parent_job_id):
@@ -416,7 +474,7 @@ def crawl_all_active_sources():
     return result
 
 
-@shared_task(bind=True, max_retries=2)
+@shared_task(bind=True, max_retries=8)
 def run_crawl_job(self, job_id):
     """
     Execute a Control Center crawl job.
@@ -680,10 +738,20 @@ def run_crawl_job(self, job_id):
             }
         )
         
-        # Retry if appropriate
-        if error_code in ['NETWORK_TIMEOUT', 'NETWORK_REFUSED', 'HTTP_SERVER_ERROR']:
-            raise self.retry(exc=e, countdown=60)
-        
+        should_retry, max_attempts, countdown = _get_retry_decision(error_code, self.request.retries)
+        attempt_number = self.request.retries + 1
+
+        if should_retry and countdown is not None:
+            logger.info(
+                f"Retrying run_crawl_job {job_id} in {countdown}s "
+                f"(attempt {attempt_number + 1}/{max_attempts}, error_code={error_code})"
+            )
+            raise self.retry(exc=e, countdown=countdown)
+
+        logger.info(
+            f"Not retrying run_crawl_job {job_id} "
+            f"(attempt {attempt_number}/{max_attempts}, error_code={error_code})"
+        )
         return {
             'success': False,
             'status': 'failed',
