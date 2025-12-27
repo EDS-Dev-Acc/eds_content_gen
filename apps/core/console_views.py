@@ -2402,6 +2402,10 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
             dedupe_by_url=original.dedupe_by_url,
             dedupe_by_fingerprint=original.dedupe_by_fingerprint,
             dedupe_threshold=original.dedupe_threshold,
+            source_overrides=original.source_overrides,
+            config_overrides=original.config_overrides,
+            triggered_by='manual',
+            triggered_by_user=request.user,
             status='draft',
             is_multi_source=original.is_multi_source,
             source=original.source,  # Copy single-source reference
@@ -2411,12 +2415,13 @@ class ControlCenterCloneView(LoginRequiredMixin, View):
         from apps.sources.models import CrawlJobSeed
         for seed in original.job_seeds.all():
             CrawlJobSeed.objects.create(
-                job=clone,
+                crawl_job=clone,
                 url=seed.url,
                 label=seed.label,
-                priority=seed.priority,
-                override_depth=seed.override_depth,
-                override_max_pages=seed.override_max_pages,
+                max_pages=seed.max_pages,
+                crawl_depth=seed.crawl_depth,
+                fetch_mode=seed.fetch_mode,
+                proxy_group=seed.proxy_group,
                 custom_headers=seed.custom_headers,
             )
         
