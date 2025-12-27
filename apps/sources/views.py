@@ -244,6 +244,7 @@ class RunViewSet(viewsets.ModelViewSet):
         source_ids = serializer.validated_data['source_ids']
         priority = serializer.validated_data.get('priority', 5)
         config_overrides = serializer.validated_data.get('config_overrides', {})
+        selection_snapshot = None
         
         sources = Source.objects.filter(id__in=source_ids)
         is_multi_source = len(sources) > 1
@@ -258,6 +259,13 @@ class RunViewSet(viewsets.ModelViewSet):
                 triggered_by_user=request.user,
                 is_multi_source=True,
                 config_overrides=config_overrides,
+            )
+
+            selection_snapshot = crawl_job.persist_selection_snapshot(
+                source_ids=source_ids,
+                seeds=[],
+                config_overrides=config_overrides,
+                source_overrides=crawl_job.source_overrides,
             )
             
             # Create source results for each source
@@ -299,6 +307,13 @@ class RunViewSet(viewsets.ModelViewSet):
                 is_multi_source=False,
                 config_overrides=config_overrides,
             )
+
+            selection_snapshot = crawl_job.persist_selection_snapshot(
+                source_ids=[source.id],
+                seeds=[],
+                config_overrides=config_overrides,
+                source_overrides=crawl_job.source_overrides,
+            )
             
             try:
                 headers = celery_request_id_headers()
@@ -331,6 +346,7 @@ class RunViewSet(viewsets.ModelViewSet):
             'status': crawl_job.status,
             'is_multi_source': crawl_job.is_multi_source,
             'source_count': len(sources),
+            'selection_snapshot': selection_snapshot,
             'message': f"Run started with {len(sources)} source(s)",
         }, status=status.HTTP_201_CREATED)
 
@@ -352,6 +368,7 @@ class RunStartView(APIView):
         source_ids = serializer.validated_data['source_ids']
         priority = serializer.validated_data.get('priority', 5)
         config_overrides = serializer.validated_data.get('config_overrides', {})
+        selection_snapshot = None
         
         sources = Source.objects.filter(id__in=source_ids)
         is_multi_source = len(sources) > 1
@@ -368,6 +385,13 @@ class RunStartView(APIView):
                 triggered_by_user=request.user,
                 is_multi_source=True,
                 config_overrides=config_overrides,
+            )
+
+            selection_snapshot = crawl_job.persist_selection_snapshot(
+                source_ids=source_ids,
+                seeds=[],
+                config_overrides=config_overrides,
+                source_overrides=crawl_job.source_overrides,
             )
             
             # Create source results for each source
@@ -413,6 +437,13 @@ class RunStartView(APIView):
                 is_multi_source=False,
                 config_overrides=config_overrides,
             )
+
+            selection_snapshot = crawl_job.persist_selection_snapshot(
+                source_ids=[source.id],
+                seeds=[],
+                config_overrides=config_overrides,
+                source_overrides=crawl_job.source_overrides,
+            )
             
             # Queue the crawl task with request_id propagation
             try:
@@ -446,6 +477,7 @@ class RunStartView(APIView):
             'status': crawl_job.status,
             'is_multi_source': crawl_job.is_multi_source,
             'source_count': len(sources),
+            'selection_snapshot': selection_snapshot,
         }, status=status.HTTP_201_CREATED)
 
 
