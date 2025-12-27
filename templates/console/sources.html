@@ -159,9 +159,11 @@
         <div class="relative transform overflow-hidden rounded-lg bg-white px-4 pb-4 pt-5 text-left shadow-xl transition-all sm:my-8 sm:w-full sm:max-w-lg sm:p-6">
             <div>
                 <h3 class="text-lg font-semibold leading-6 text-gray-900 mb-4">Add New Source</h3>
+                <div id="add-source-errors" class="mb-3"></div>
                 <form hx-post="{% url 'console:source_create' %}" 
                       hx-target="#sources-table-body" 
                       hx-swap="innerHTML"
+                      hx-on::before-request="document.getElementById('add-source-errors').innerHTML='';"
                       hx-on::after-request="if(event.detail.successful) closeModal('add-source-modal')">
                     {% csrf_token %}
                     <div class="space-y-4">

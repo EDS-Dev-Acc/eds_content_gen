@@ -8,6 +8,7 @@ from datetime import datetime
 from django.utils import timezone
 from django.conf import settings
 import logging
+from typing import Callable, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +38,7 @@ class BaseCrawler(ABC):
             'user_agent',
             'EMCIP-Bot/1.0 (Content Intelligence Platform)'
         )
+        self._cancel_check: Optional[Callable[[], Optional[str]]] = None
 
     @abstractmethod
     def crawl(self):
@@ -54,6 +56,28 @@ class BaseCrawler(ABC):
             }
         """
         pass
+
+    def set_cancel_callback(self, callback: Callable[[], Optional[str]]):
+        """
+        Register a cancellation callback.
+
+        The callback should return a string reason if cancelled/paused,
+        or None/False if the crawl should continue.
+        """
+        self._cancel_check = callback
+
+    def _raise_if_cancelled(self):
+        """Raise if a cancellation callback indicates termination."""
+        if not self._cancel_check:
+            return
+        try:
+            reason = self._cancel_check()
+        except Exception as exc:  # Defensive: cancellation check should never break crawl
+            logger.warning("Cancellation check failed: %s", exc)
+            return
+        if reason:
+            from .exceptions import CrawlCancelled
+            raise CrawlCancelled(reason)
 
     def _is_duplicate(self, url):
         """

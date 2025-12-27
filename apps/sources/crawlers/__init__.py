@@ -61,6 +61,7 @@ from .pagination import (
     create_paginator,
 )
 from .adapters import ModularCrawler
+from .exceptions import CrawlCancelled
 
 
 def get_crawler(source, use_modular: bool = False, fetcher_type: str = None, config: dict = None):
@@ -177,6 +178,7 @@ __all__ = [
     'normalize_url',
     'fetch_urls_parallel',
     'get_rate_limiter',
+    'CrawlCancelled',
     
     # Interfaces (ABCs)
     'Fetcher',
