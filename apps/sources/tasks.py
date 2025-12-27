@@ -8,6 +8,7 @@ Phase 14.1: Added error taxonomy for normalized error codes.
 from celery import shared_task
 from django.utils import timezone
 import logging
+import math
 import random
 
 logger = logging.getLogger(__name__)
@@ -500,11 +501,12 @@ def _finalize_parent_job(parent_job_id):
             status_map = {s['status']: s['count'] for s in status_counts}
             
             pending_count = status_map.get('pending', 0)
+            queued_count = status_map.get('queued', 0)
             running_count = status_map.get('running', 0)
             failed_count = status_map.get('failed', 0)
             completed_count = status_map.get('completed', 0)
             skipped_count = status_map.get('skipped', 0)
-            pending_or_running = pending_count + running_count
+            pending_or_running = pending_count + queued_count + running_count
             total_count = sum(status_map.values())
             
             # Only update status if not already finalized
@@ -558,6 +560,93 @@ def _finalize_parent_job(parent_job_id):
         logger.warning(f"Parent job {parent_job_id} not found during finalization")
     except Exception as e:
         logger.error(f"Error finalizing parent job {parent_job_id}: {e}", exc_info=True)
+
+
+@shared_task(max_retries=1)
+def orchestrate_crawl_children(parent_job_id, max_concurrency=None, rate_delay_ms=None):
+    """
+    Queue child crawl tasks in controlled batches.
+
+    This orchestrator enforces a max concurrency per parent job and reschedules
+    itself until all pending children have been dispatched. Queued/running
+    counts are tracked via CrawlJobSourceResult statuses.
+    """
+    from apps.sources.models import CrawlJob, CrawlJobSourceResult
+    from apps.core.middleware import celery_request_id_headers
+
+    try:
+        job = CrawlJob.objects.get(id=parent_job_id)
+    except CrawlJob.DoesNotExist:
+        logger.error(f"Parent job {parent_job_id} not found for orchestration")
+        return {'error': 'parent_not_found'}
+
+    if job.status in ['cancelled', 'stopped', 'failed']:
+        logger.info(f"Skipping orchestration for job {parent_job_id} with status {job.status}")
+        return {'status': job.status, 'dispatched': 0}
+
+    if job.status == 'paused':
+        logger.info(f"Job {parent_job_id} paused; orchestration will resume later")
+        return {'status': 'paused', 'dispatched': 0}
+
+    max_parallel = max_concurrency or job.max_concurrent_global or 1
+    delay_ms = rate_delay_ms if rate_delay_ms is not None else (job.rate_delay_ms or 0)
+    delay_seconds = max(1, int(math.ceil(delay_ms / 1000))) if delay_ms else 0
+
+    source_results = CrawlJobSourceResult.objects.filter(crawl_job=job)
+    running_count = source_results.filter(status='running').count()
+    queued_count = source_results.filter(status='queued').count()
+    pending_qs = source_results.filter(status='pending').order_by('created_at')
+
+    active_count = running_count + queued_count
+    available_slots = max(max_parallel - active_count, 0)
+
+    if available_slots <= 0 and pending_qs.exists():
+        # No capacity right now; reschedule for later
+        if delay_seconds:
+            orchestrate_crawl_children.apply_async(
+                args=[str(parent_job_id), max_concurrency, rate_delay_ms],
+                countdown=delay_seconds,
+            )
+        return {'status': job.status, 'dispatched': 0, 'pending': pending_qs.count()}
+
+    headers = celery_request_id_headers()
+    dispatched = 0
+
+    for source_result in pending_qs[:available_slots]:
+        source_result.status = 'queued'
+        source_result.save(update_fields=['status', 'updated_at'])
+
+        crawl_source.apply_async(
+            args=[str(source_result.source_id)],
+            kwargs={
+                'parent_job_id': str(job.id),
+                'config_overrides': job.config_overrides,
+            },
+            headers=headers,
+        )
+        dispatched += 1
+
+    if dispatched and job.status in ['pending', 'queued', 'draft']:
+        job.status = 'running'
+        if not job.started_at:
+            job.started_at = timezone.now()
+        job.save(update_fields=['status', 'started_at', 'updated_at'])
+
+    remaining_pending = pending_qs.count() - dispatched
+    if remaining_pending > 0 and job.status not in ['cancelled', 'stopped', 'failed', 'paused']:
+        countdown = delay_seconds or 1
+        orchestrate_crawl_children.apply_async(
+            args=[str(parent_job_id), max_concurrency, rate_delay_ms],
+            countdown=countdown,
+        )
+
+    return {
+        'status': job.status,
+        'dispatched': dispatched,
+        'running': running_count,
+        'queued': queued_count + dispatched,
+        'pending': max(remaining_pending, 0),
+    }
 
 
 @shared_task
@@ -630,8 +719,41 @@ def run_crawl_job(self, job_id):
     if job.status not in ['queued', 'draft']:
         logger.warning(f"Job {job_id} has status '{job.status}', cannot start")
         return {'success': False, 'error': f'Job status is {job.status}'}
+
+    # Multi-source runs use orchestrator for controlled dispatch
+    if job.is_multi_source:
+        job.status = 'queued'
+        job.task_id = self.request.id
+        if not job.started_at:
+            job.started_at = timezone.now()
+        job.save(update_fields=['status', 'started_at', 'task_id', 'updated_at'])
+
+        try:
+            CrawlJobEvent.objects.create(
+                crawl_job=job,
+                event_type='start',
+                severity='info',
+                message='Orchestrator scheduled for child crawls',
+            )
+
+            orchestrate_crawl_children.apply_async(
+                args=[str(job.id)],
+                kwargs={
+                    'max_concurrency': job.max_concurrent_global,
+                    'rate_delay_ms': job.rate_delay_ms,
+                },
+            )
+            return {
+                'success': True,
+                'status': 'queued',
+                'message': 'Child crawls orchestrated',
+                'job_id': job_id,
+            }
+        except Exception as e:
+            logger.exception(f"Failed to orchestrate children for job {job_id}: {e}")
+            return {'success': False, 'error': str(e)}
     
-    # Update job to running
+    # Update job to running for single-source jobs
     job.status = 'running'
     job.started_at = timezone.now()
     job.task_id = self.request.id

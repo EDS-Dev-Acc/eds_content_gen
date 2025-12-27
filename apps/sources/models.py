@@ -1107,6 +1107,7 @@ class CrawlJobSourceResult(BaseModel):
 
     STATUS_CHOICES = [
         ('pending', 'Pending'),
+        ('queued', 'Queued'),
         ('running', 'Running'),
         ('completed', 'Completed'),
         ('failed', 'Failed'),
